@@ -14,7 +14,7 @@ func TestCPU_Basic(t *testing.T) {
 
 	bus := &SysBus{
 		Cartridge: cartridge,
-		RAM:       make([]byte, ramSize),
+		RAM:       NewRAM(),
 	}
 	bus.Write(0x00FF, 42)
 
@@ -273,8 +273,8 @@ func TestCPU_Basic(t *testing.T) {
 
 func TestCPU_ADC(t *testing.T) {
 	newBus := func(ram ...byte) *SysBus {
-		busRAM := make([]byte, ramSize)
-		copy(busRAM, ram)
+		busRAM := NewRAM()
+		copy(busRAM.data, ram)
 		return &SysBus{
 			RAM: busRAM,
 		}
@@ -434,8 +434,8 @@ func TestCPU_ADC(t *testing.T) {
 func TestCPU_SBC(t *testing.T) {
 	t.Skip()
 	newBus := func(ram ...byte) *SysBus {
-		busRAM := make([]byte, ramSize)
-		copy(busRAM, ram)
+		busRAM := NewRAM()
+		copy(busRAM.data, ram)
 		return &SysBus{
 			RAM: busRAM,
 		}

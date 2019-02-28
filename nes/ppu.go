@@ -253,7 +253,6 @@ const (
 
 type PPU struct {
 	Cartridge *Cartridge
-	Bus       *SysBus
 
 	Ctrl           PpuCtrl   // 0x2000 PPUCTRL
 	Mask           PpuMask   // 0x2001 PPUMASK
@@ -604,8 +603,6 @@ func (p *PPU) Buffer() *image.RGBA {
 }
 
 func (p *PPU) ReadPort(address uint16) byte {
-	// TODO: this is "required" because of dma, remove when dma is factored
-	// out. The check should not exist, only the mirroring should.
 	if address < 0x4000 {
 		address = (address-0x2000)%0x08 + 0x2000
 	}
@@ -649,8 +646,6 @@ func (p *PPU) ReadPort(address uint16) byte {
 }
 
 func (p *PPU) WritePort(address uint16, value byte, cpu *CPU) {
-	// TODO: this is "required" because of dma, remove when dma is factored
-	// out. The check should not exist, only the mirroring should.
 	if address < 0x4000 {
 		address = (address-0x2000)%0x08 + 0x2000
 	}
@@ -661,7 +656,7 @@ func (p *PPU) WritePort(address uint16, value byte, cpu *CPU) {
 		p.Ctrl = PpuCtrl(value)
 
 		if p.Status&VerticalBlank > 0 {
-			//TODO: generate NMI
+			// TODO: cpu.Trigger(NMI)
 		}
 
 		// t: ....BA.. ........ = d: ......BA
@@ -728,18 +723,8 @@ func (p *PPU) WritePort(address uint16, value byte, cpu *CPU) {
 		p.incrementV()
 
 	case OAMDMA: // $4014
-		// TODO: DMA should be implemented in the cpu.
-		addr := uint16(value) << 8
-		for i := 0; i < 256; i++ {
-			v := p.Bus.Read(addr)
-			p.oamData[p.OAMAddress] = v
-			p.OAMAddress++
-			addr++
-		}
-		cpu.stall += 513
-		if cpu.Cycles%2 == 1 {
-			cpu.stall++
-		}
+		p.oamData[p.OAMAddress] = value
+		p.OAMAddress++
 
 	default:
 		log.Printf("unexpected ppu port write: 0x%04X, 0x%02X", address, value)
@@ -780,6 +765,11 @@ func (p *PPU) Write(address uint16, value byte) {
 		panic(fmt.Sprintf("unexpected ppu memory write: 0x%04X, 0x%02X", address, value))
 	}
 
+}
+
+func (p *PPU) writeDMA(v byte) {
+	p.oamData[p.OAMAddress] = v
+	p.OAMAddress++
 }
 
 func (p *PPU) readPalette(address uint16) byte {

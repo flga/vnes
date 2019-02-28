@@ -100,6 +100,8 @@ const (
 )
 
 type CPU struct {
+	Cycles uint64
+
 	// A, along with the arithmetic logic unit (ALU), supports using the status
 	// register for carrying, overflow detection, and so on.
 	A byte
@@ -130,11 +132,7 @@ type CPU struct {
 	// See Status for more info.
 	P Status
 
-	Cycles uint64
-	stall  uint64 //TODO:remove
-
-	debug io.Writer
-
+	debug     io.Writer
 	interrupt Interrupt
 }
 
@@ -171,12 +169,6 @@ func (c *CPU) Trigger(interrupt Interrupt) {
 
 func (c *CPU) Execute(bus *SysBus, ppu *PPU) uint64 {
 	oldCycles := c.Cycles
-
-	// TODO: remove
-	if c.stall > 0 {
-		c.stall--
-		c.clock()
-	}
 
 	c.handleInterrupts(bus)
 
@@ -368,8 +360,30 @@ func (c *CPU) readAddress(bus *SysBus, address uint16) uint16 {
 }
 
 func (c *CPU) write(bus *SysBus, address uint16, value byte) {
+	if address == OAMDMA {
+		c.dmaTransfer(bus, value)
+		return
+	}
+
 	c.clock()
 	bus.Write(address, value)
+}
+
+func (c *CPU) dmaTransfer(bus *SysBus, address byte) {
+	addr := uint16(address) << 8
+	for i := 0; i < 256; i++ {
+		c.clock()
+		v := bus.Read(addr)
+
+		c.clock()
+		bus.Write(OAMDMA, v)
+
+		addr++
+	}
+
+	if c.Cycles&1 == 1 {
+		c.clock()
+	}
 }
 
 func (c *CPU) resolveAddress(bus *SysBus, inst Instruction) (intermediateAddr, address uint16) {

@@ -31,7 +31,7 @@ package nes
 // ╚═════════════════╧═══════╧═════════════════════════╧═══════════╝
 type SysBus struct {
 	Cartridge *Cartridge
-	RAM       []byte //TODO: move actual ram to console
+	RAM       *RAM
 	CPU       *CPU
 	PPU       *PPU
 	Ctrl1     *Controller
@@ -39,7 +39,7 @@ type SysBus struct {
 
 func (bus *SysBus) Read(address uint16) byte {
 	if address < 0x2000 {
-		return bus.RAM[address%ramSize]
+		return bus.RAM.Read(address)
 	}
 
 	if address >= 0x2000 && address <= 0x3FFF {
@@ -80,7 +80,7 @@ func (bus *SysBus) Read(address uint16) byte {
 
 func (bus *SysBus) Write(address uint16, v byte) {
 	if address < 0x2000 {
-		bus.RAM[address%ramSize] = v
+		bus.RAM.Write(address, v)
 		return
 	}
 

@@ -8,7 +8,6 @@ import (
 )
 
 const (
-	ramSize          = 2048
 	ppuRegistersSize = 8
 	ioRegistersSize  = 32
 	expRomSize       = 8160
@@ -19,6 +18,7 @@ const (
 
 type Console struct {
 	Cartridge   *Cartridge
+	RAM         *RAM
 	CPU         *CPU
 	PPU         *PPU
 	Controller1 *Controller
@@ -32,12 +32,13 @@ func NewConsole(c *Cartridge, pc uint16, debugOut io.Writer) *Console {
 		panic(fmt.Sprintf("unsupported mapper %d", c.Mapper))
 	}
 
-	ram := make([]byte, ramSize)
+	ram := NewRAM()
 	ctrl1 := &Controller{}
 
 	ppu := &PPU{
 		Cartridge: c,
 	}
+	ppu.Init()
 
 	cpu := NewCPU(debugOut)
 
@@ -49,9 +50,6 @@ func NewConsole(c *Cartridge, pc uint16, debugOut io.Writer) *Console {
 		Ctrl1:     ctrl1,
 	}
 
-	ppu.Init()
-	ppu.Bus = bus // TODO: untangle
-
 	cpu.Init(bus)
 	if pc != 0 {
 		cpu.SetPC(pc)
@@ -60,6 +58,7 @@ func NewConsole(c *Cartridge, pc uint16, debugOut io.Writer) *Console {
 
 	return &Console{
 		Cartridge:   c,
+		RAM:         ram,
 		CPU:         cpu,
 		PPU:         ppu,
 		Controller1: ctrl1,
