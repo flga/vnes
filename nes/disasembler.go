@@ -57,30 +57,30 @@ func disassemble(out io.Writer, bus *SysBus,
 		strlen += n
 	}
 
-	// DEBUG INFO
-	switch inst.Mode {
-	case Indirect:
-		n, _ := fmt.Fprintf(out, " = %04X", resolvedAddr)
-		strlen += n
-	case ZeroPage, Absolute:
-		if inst.Name != "JMP" && inst.Name != "JSR" {
-			n, _ := fmt.Fprintf(out, " = %02X", bus.Read(resolvedAddr))
-			strlen += n
-		}
-	case IndexedY, IndexedX:
-		n, _ := fmt.Fprintf(out, " @ %04X = %02X", resolvedAddr, bus.Read(resolvedAddr))
-		strlen += n
-	case ZeroPageIndexedY, ZeroPageIndexedX:
-		n, _ := fmt.Fprintf(out, " @ %02X = %02X", resolvedAddr, bus.Read(resolvedAddr))
-		strlen += n
+	// // DEBUG INFO
+	// switch inst.Mode {
+	// case Indirect:
+	// 	n, _ := fmt.Fprintf(out, " = %04X", resolvedAddr)
+	// 	strlen += n
+	// case ZeroPage, Absolute:
+	// 	if inst.Name != "JMP" && inst.Name != "JSR" {
+	// 		n, _ := fmt.Fprintf(out, " = %02X", bus.Read(resolvedAddr))
+	// 		strlen += n
+	// 	}
+	// case IndexedY, IndexedX:
+	// 	n, _ := fmt.Fprintf(out, " @ %04X = %02X", resolvedAddr, bus.Read(resolvedAddr))
+	// 	strlen += n
+	// case ZeroPageIndexedY, ZeroPageIndexedX:
+	// 	n, _ := fmt.Fprintf(out, " @ %02X = %02X", resolvedAddr, bus.Read(resolvedAddr))
+	// 	strlen += n
 
-	case PreIndexedIndirect:
-		n, _ := fmt.Fprintf(out, " @ %02X = %04X = %02X", intermediateAddr, resolvedAddr, bus.Read(resolvedAddr))
-		strlen += n
-	case PostIndexedIndirect:
-		n, _ := fmt.Fprintf(out, " = %04X @ %04X = %02X", intermediateAddr, resolvedAddr, bus.Read(resolvedAddr))
-		strlen += n
-	}
+	// case PreIndexedIndirect:
+	// 	n, _ := fmt.Fprintf(out, " @ %02X = %04X = %02X", intermediateAddr, resolvedAddr, bus.Read(resolvedAddr))
+	// 	strlen += n
+	// case PostIndexedIndirect:
+	// 	n, _ := fmt.Fprintf(out, " = %04X @ %04X = %02X", intermediateAddr, resolvedAddr, bus.Read(resolvedAddr))
+	// 	strlen += n
+	// }
 
 	fmt.Fprint(out, strings.Repeat(" ", 48-strlen))
 	var col, scanLine int

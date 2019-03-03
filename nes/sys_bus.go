@@ -43,7 +43,7 @@ func (bus *SysBus) Read(address uint16) byte {
 	}
 
 	if address >= 0x2000 && address <= 0x3FFF {
-		return bus.PPU.ReadPort(address)
+		return bus.PPU.ReadPort(address, bus.CPU)
 	}
 
 	if address == 0x4016 {
@@ -56,7 +56,7 @@ func (bus *SysBus) Read(address uint16) byte {
 	}
 
 	if address == 0x4014 {
-		return bus.PPU.ReadPort(address)
+		return bus.PPU.ReadPort(address, bus.CPU)
 	}
 
 	if address < 0x4020 {

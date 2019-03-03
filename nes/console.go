@@ -40,7 +40,7 @@ func NewConsole(c *Cartridge, pc uint16, debugOut io.Writer) *Console {
 	}
 	ppu.Init()
 
-	cpu := NewCPU(debugOut)
+	cpu := NewCPU(debugOut, ppu)
 
 	bus := &SysBus{
 		Cartridge: c,
@@ -75,12 +75,12 @@ func (c *Console) Reset() {
 }
 
 func (c *Console) Step() {
-	cycles := c.CPU.Execute(c.bus, c.PPU)
-	for i := uint64(0); i < cycles; i++ {
-		c.PPU.Tick(c.CPU)
-		c.PPU.Tick(c.CPU)
-		c.PPU.Tick(c.CPU)
-	}
+	_ = c.CPU.Execute(c.bus, c.PPU)
+	// for i := uint64(0); i < cycles; i++ {
+	// 	c.PPU.Tick(c.CPU)
+	// 	c.PPU.Tick(c.CPU)
+	// 	c.PPU.Tick(c.CPU)
+	// }
 }
 
 func (c *Console) StepFrame() {

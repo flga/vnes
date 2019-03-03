@@ -9,6 +9,7 @@ type Interrupt byte
 const (
 	None Interrupt = iota
 	NMI
+	NMI_Next
 	IRQ
 )
 
@@ -134,14 +135,17 @@ type CPU struct {
 
 	debug     io.Writer
 	interrupt Interrupt
+
+	ppuexperiment *PPU
 }
 
-func NewCPU(debug io.Writer) *CPU {
+func NewCPU(debug io.Writer, ppu *PPU) *CPU {
 	return &CPU{
-		debug: debug,
-		P:     InterruptDisable | Unused,
-		S:     0xFD,
-		PC:    ResetAddr,
+		debug:         debug,
+		P:             InterruptDisable | Unused,
+		S:             0xFD,
+		PC:            ResetAddr,
+		ppuexperiment: ppu,
 	}
 }
 
@@ -164,6 +168,7 @@ func (c *CPU) Trigger(interrupt Interrupt) {
 	if interrupt == IRQ && c.P&InterruptDisable > 0 {
 		return
 	}
+
 	c.interrupt = interrupt
 }
 
@@ -345,17 +350,25 @@ func (c *CPU) Execute(bus *SysBus, ppu *PPU) uint64 {
 
 func (c *CPU) clock() {
 	c.Cycles++
+	c.ppuexperiment.Tick(c)
+	c.ppuexperiment.Tick(c)
+	c.ppuexperiment.Tick(c)
 }
 
 func (c *CPU) read(bus *SysBus, address uint16) byte {
 	c.clock()
-	return bus.Read(address)
+	v := bus.Read(address)
+	return v
 }
 
 func (c *CPU) readAddress(bus *SysBus, address uint16) uint16 {
 	c.clock()
+	lo := bus.Read(address)
+	c.clock()
+	hi := bus.Read(address + 1)
 
-	addr, _, _ := bus.ReadAddress(address)
+	addr := uint16(hi)<<8 | uint16(lo)
+
 	return addr
 }
 
@@ -555,11 +568,15 @@ func (c *CPU) handleInterrupts(bus *SysBus) {
 	switch c.interrupt {
 	case NMI:
 		c.handleNMI(bus)
+		c.interrupt = None
+	case NMI_Next:
+		// skip NMI now, handle it next instr
+		c.interrupt = NMI
 	case IRQ:
 		c.handleIRQ(bus)
+		c.interrupt = None
 	}
 
-	c.interrupt = None
 }
 
 // NMI - Non-Maskable Interrupt
@@ -784,6 +801,7 @@ func (c *CPU) BRK(bus *SysBus, mode AddressingMode, addr uint16) {
 	status |= Unused
 	status |= Break
 	c.push(bus, byte(status))
+	c.P |= InterruptDisable
 
 	c.PC = c.readAddress(bus, IRQ_BRKAddr)
 }
@@ -1203,10 +1221,9 @@ func (c *CPU) PHP(bus *SysBus, mode AddressingMode, addr uint16) {
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Set if bit 7 of A is set
 func (c *CPU) PLA(bus *SysBus, mode AddressingMode, addr uint16) {
-	a := c.pull(bus)
-
 	// TODO: this cycle should be spent in pull. read the docs
 	c.clock()
+	a := c.pull(bus)
 
 	c.A = a
 	c.updateZero(c.A)
@@ -1227,10 +1244,10 @@ func (c *CPU) PLA(bus *SysBus, mode AddressingMode, addr uint16) {
 // V	Overflow Flag	Set from stack
 // N	Negative Flag	Set from stack
 func (c *CPU) PLP(bus *SysBus, mode AddressingMode, addr uint16) {
-	p := c.pull(bus)
 
 	// TODO: this cycle should be spent in pull. read the docs
 	c.clock()
+	p := c.pull(bus)
 
 	c.P = Status(p)
 	c.P &^= Break //TODO figure out if we can just turn it off instead of actually ignoring

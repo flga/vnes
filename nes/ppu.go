@@ -302,6 +302,8 @@ type PPU struct {
 	highAttrRegister uint16
 
 	sprite0Next bool
+	nmiSent     bool
+	suppressNMI bool
 
 	buffer *image.RGBA
 }
@@ -525,9 +527,10 @@ func (p *PPU) Tick(cpu *CPU) {
 	switch {
 	case p.ScanLine == 241 && p.Dot == 1:
 		p.Status |= VerticalBlank
-		if p.Ctrl&GenerateNMI > 0 {
+		if !p.suppressNMI && p.Ctrl&GenerateNMI > 0 {
 			cpu.Trigger(NMI)
 		}
+
 	case preRender && p.Dot == 1:
 		p.Status &^= SpriteOverflow
 		p.Status &^= Sprite0Hit
@@ -538,6 +541,9 @@ func (p *PPU) Tick(cpu *CPU) {
 	switch {
 	case p.Dot == 340 && preRender:
 		p.Dot = 0
+		if p.Frame&1 == 1 && p.Mask&ShowBackground > 0 {
+			p.Dot = 1
+		}
 		p.ScanLine = 0
 		p.Frame++
 	case p.Dot == 340:
@@ -602,15 +608,23 @@ func (p *PPU) Buffer() *image.RGBA {
 	return p.buffer
 }
 
-func (p *PPU) ReadPort(address uint16) byte {
+func (p *PPU) ReadPort(address uint16, c *CPU) byte {
 	if address < 0x4000 {
-		address = (address-0x2000)%0x08 + 0x2000
+		address = 0x2000 + address%0x08
 	}
 
 	switch address {
 	case PPUSTATUS: // $2002
 		result := p.registerBus&0x1F | byte(p.Status)
 		p.Status &^= VerticalBlank
+
+		if p.ScanLine == 241 && p.Dot <= 2 {
+			p.suppressNMI = true
+			result &^= byte(VerticalBlank)
+			c.Trigger(None)
+		} else {
+			p.suppressNMI = false
+		}
 		// w:                  = 0
 		p.w = 0
 		return result
@@ -647,16 +661,17 @@ func (p *PPU) ReadPort(address uint16) byte {
 
 func (p *PPU) WritePort(address uint16, value byte, cpu *CPU) {
 	if address < 0x4000 {
-		address = (address-0x2000)%0x08 + 0x2000
+		address = 0x2000 + address%0x08
 	}
 	p.registerBus = value
 
 	switch address {
 	case PPUCTRL: // $2000
+		prev := p.Ctrl
 		p.Ctrl = PpuCtrl(value)
 
-		if p.Status&VerticalBlank > 0 {
-			// TODO: cpu.Trigger(NMI)
+		if p.Status&VerticalBlank > 0 && p.Ctrl&GenerateNMI > 0 && prev&GenerateNMI == 0 {
+			cpu.Trigger(NMI_Next)
 		}
 
 		// t: ....BA.. ........ = d: ......BA
