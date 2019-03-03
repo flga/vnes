@@ -338,13 +338,29 @@ func (p *PPU) spritePixel() (pixel, color, priority byte, spriteZero bool) {
 		patternX := byte(outputX) - x
 
 		rowOffset := patternY
-		if flipV {
-			rowOffset = 7 - patternY
-		}
 
-		patternTable := p.spriteTable()
-		patternLo := p.Read(patternTable + pattern*16 + rowOffset)
-		patternHi := p.Read(patternTable + pattern*16 + rowOffset + 8)
+		patternTable := p.spriteTable(pattern)
+		var patternLo, patternHi byte
+		if p.Ctrl&SpriteSize == 0 {
+			if flipV {
+				rowOffset = 7 - patternY
+			}
+			patternLo = p.Read(patternTable + pattern*16 + rowOffset)
+			patternHi = p.Read(patternTable + pattern*16 + rowOffset + 8)
+		} else {
+			pattern &= 0xFE
+			if flipV {
+				rowOffset = 15 - patternY
+			}
+			if rowOffset > 7 { // top sprite
+				patternLo = p.Read(patternTable + pattern*16 + rowOffset + 0x10 - 8)
+				patternHi = p.Read(patternTable + pattern*16 + rowOffset + 0x10 + 8 - 8)
+			} else { // bot sprite
+				patternLo = p.Read(patternTable + pattern*16 + rowOffset)
+				patternHi = p.Read(patternTable + pattern*16 + rowOffset + 8)
+			}
+
+		}
 
 		pixOffset := patternX
 		if !flipH {
@@ -579,9 +595,14 @@ func (p *PPU) evaluateSprites() {
 			row := p.ScanLine - int(y) //TODO
 
 			// sprite not in range
-			// TODO: sprites can be 16px tall
-			if row < 0 || row > 7 {
-				continue
+			if p.Ctrl&SpriteSize == 0 {
+				if row < 0 || row > 7 {
+					continue
+				}
+			} else {
+				if row < 0 || row > 15 {
+					continue
+				}
 			}
 
 			if p.spritesInRange < 8 {
@@ -916,11 +937,15 @@ func (p *PPU) backgroundTable() uint16 {
 	return 0x0000
 }
 
-func (p *PPU) spriteTable() uint16 {
-	// TODO: bigger sprites
+func (p *PPU) spriteTable(pattern uint16) uint16 {
+	if p.Ctrl&SpriteSize > 0 {
+		return pattern & 1 * 0x1000
+	}
+
 	if p.Ctrl&SpritePatternTableAddress > 0 {
 		return 0x1000
 	}
+
 	return 0x0000
 }
 
