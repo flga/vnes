@@ -19,6 +19,7 @@ type patternWindow struct {
 	buf        *image.RGBA
 	rect       *sdl.Rect
 	showGrid   bool
+	paletteNum byte
 }
 
 func newPatternWindow(scale int32) (*patternWindow, uint32, error) {
@@ -57,7 +58,7 @@ func newPatternWindow(scale int32) (*patternWindow, uint32, error) {
 }
 
 func (w *patternWindow) Render(console *nes.Console, _ time.Duration) error {
-	console.PPU.DrawPatternTables(w.buf)
+	console.PPU.DrawPatternTables(w.buf, w.paletteNum)
 
 	pixels, _, err := w.tex.Lock(nil)
 	if err != nil {
@@ -118,6 +119,20 @@ func (w *patternWindow) Handle(event sdl.Event, console *nes.Console) error {
 	case *sdl.KeyboardEvent:
 		if evt.Type == sdl.KEYUP && evt.Keysym.Sym == sdl.K_g {
 			w.showGrid = !w.showGrid
+		}
+		if evt.Type == sdl.KEYUP && evt.Keysym.Sym == sdl.K_UP {
+			if w.paletteNum == 7 {
+				w.paletteNum = 0
+			} else {
+				w.paletteNum++
+			}
+		}
+		if evt.Type == sdl.KEYUP && evt.Keysym.Sym == sdl.K_DOWN {
+			if w.paletteNum == 0 {
+				w.paletteNum = 7
+			} else {
+				w.paletteNum--
+			}
 		}
 	}
 

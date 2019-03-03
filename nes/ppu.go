@@ -314,10 +314,12 @@ func (p *PPU) Init() {
 
 func (p *PPU) spritePixel() (pixel, color, priority byte, spriteZero bool) {
 	// TODO: 16px sprites
-	outputX := p.Dot - 1
+	outputX := byte(p.Dot - 1)
 	if p.Mask&ShowSprites == 0 || (outputX < 8 && p.Mask&SpriteClipping == 0) {
 		return 0, 0, 0, false
 	}
+
+	spriteHeight := uint16(p.spriteHeight())
 
 	for i := byte(0); i < p.spritesInRange; i++ {
 		y := p.secondaryOAMData[i*4] + 1 //TODO
@@ -327,48 +329,38 @@ func (p *PPU) spritePixel() (pixel, color, priority byte, spriteZero bool) {
 
 		pal := attr & 0x03 << 2
 		priority := attr >> 5 & 0x01
-		flipH := attr>>6&0x01 > 0
-		flipV := attr>>7&0x01 > 0
+		flipX := attr>>6&0x01 > 0
+		flipY := attr>>7&0x01 > 0
 
-		if outputX < int(x) || outputX > int(x)+7 {
+		if outputX < x || outputX > x+7 {
 			continue
 		}
 
-		patternY := uint16(p.ScanLine - int(y))
-		patternX := byte(outputX) - x
-
-		rowOffset := patternY
-
 		patternTable := p.spriteTable(pattern)
-		var patternLo, patternHi byte
-		if p.Ctrl&SpriteSize == 0 {
-			if flipV {
-				rowOffset = 7 - patternY
-			}
-			patternLo = p.Read(patternTable + pattern*16 + rowOffset)
-			patternHi = p.Read(patternTable + pattern*16 + rowOffset + 8)
-		} else {
+		patternY := uint16(p.ScanLine - int(y))
+		patternX := outputX - x
+
+		if !flipX {
+			patternX = 7 - patternX
+		}
+
+		if flipY {
+			patternY = spriteHeight - 1 - patternY
+		}
+
+		if patternY > 7 { // top sprite
+			patternY += 8
+		}
+
+		if spriteHeight == 16 {
 			pattern &= 0xFE
-			if flipV {
-				rowOffset = 15 - patternY
-			}
-			if rowOffset > 7 { // top sprite
-				patternLo = p.Read(patternTable + pattern*16 + rowOffset + 0x10 - 8)
-				patternHi = p.Read(patternTable + pattern*16 + rowOffset + 0x10 + 8 - 8)
-			} else { // bot sprite
-				patternLo = p.Read(patternTable + pattern*16 + rowOffset)
-				patternHi = p.Read(patternTable + pattern*16 + rowOffset + 8)
-			}
-
 		}
 
-		pixOffset := patternX
-		if !flipH {
-			pixOffset = 7 - patternX
-		}
+		patternLo := p.Read(patternTable + pattern*0x10 + patternY)
+		patternHi := p.Read(patternTable + pattern*0x10 + patternY + 8)
 
-		pixLo := patternLo >> pixOffset & 0x01
-		pixHi := patternHi >> pixOffset & 0x01 << 1
+		pixLo := patternLo >> patternX & 0x01
+		pixHi := patternHi >> patternX & 0x01 << 1
 
 		pixel = pixLo | pixHi
 		color = pixel | 0x10 | pal
@@ -585,6 +577,8 @@ func (p *PPU) evaluateSprites() {
 	// 	return
 	// }
 
+	spriteHeight := p.spriteHeight()
+
 	if p.Dot == 256 {
 		p.spritesInRange = 0
 		p.sprite0Next = false
@@ -595,14 +589,8 @@ func (p *PPU) evaluateSprites() {
 			row := p.ScanLine - int(y) //TODO
 
 			// sprite not in range
-			if p.Ctrl&SpriteSize == 0 {
-				if row < 0 || row > 7 {
-					continue
-				}
-			} else {
-				if row < 0 || row > 15 {
-					continue
-				}
+			if row < 0 || row >= spriteHeight {
+				continue
 			}
 
 			if p.spritesInRange < 8 {
@@ -949,6 +937,14 @@ func (p *PPU) spriteTable(pattern uint16) uint16 {
 	return 0x0000
 }
 
+func (p *PPU) spriteHeight() int {
+	if p.Ctrl&SpriteSize == 0 {
+		return 8
+	} else {
+		return 16
+	}
+}
+
 func (p *PPU) renderingEnabled() bool {
 	return p.Mask&ShowBackground > 0 || p.Mask&ShowSprites > 0
 }
@@ -957,8 +953,10 @@ func (p *PPU) currentlyRendering() bool {
 	return p.renderingEnabled() && (p.ScanLine < 240 || p.ScanLine == 261)
 }
 
-func (p *PPU) DrawPatternTables(buf *image.RGBA) {
+func (p *PPU) DrawPatternTables(buf *image.RGBA, paletteNum byte) {
 	draw := func(table uint16, xoffset int) {
+		attr := paletteNum << 2
+
 		for y := 0; y < 128; y++ {
 			coarseY := y / 8
 			fineY := uint16(y % 8)
@@ -974,7 +972,7 @@ func (p *PPU) DrawPatternTables(buf *image.RGBA) {
 					pixelhi := patternHi & 0x80 >> 6
 					patternLo <<= 1
 					patternHi <<= 1
-					paletteIndex := p.paletteData[pixello|pixelhi]
+					paletteIndex := p.paletteData[attr|pixello|pixelhi]
 					buf.SetRGBA(xoffset+fineX+pixel, y, palette[paletteIndex])
 				}
 			}
