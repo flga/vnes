@@ -147,6 +147,7 @@ func LoadINES(r io.Reader) (*Cartridge, error) {
 func (c *Cartridge) Read(address uint16) byte {
 	switch {
 	case address < 0x2000:
+		// fmt.Printf("%04X\n", address)
 		return c.CHR[address]
 	case address >= 0x8000:
 		return c.PRG[int(address-0x8000)%len(c.PRG)]
@@ -162,7 +163,7 @@ func (c *Cartridge) Read(address uint16) byte {
 func (c *Cartridge) Write(address uint16, value byte) {
 	switch {
 	case address < 0x2000:
-		c.CHR[address] = value
+		// c.CHR[address] = value
 	case address >= 0x8000:
 		// c.PRG[int(address-0x8000)%len(c.PRG)] = value
 	case address >= 0x6000:

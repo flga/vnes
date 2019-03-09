@@ -7,12 +7,6 @@ github.com/google/pprof v0.0.0-20190208070709-b421f19a5c07/go.mod h1:zfwlbNMJ+OI
 github.com/ianlancetaylor/demangle v0.0.0-20181102032728-5e5cf60278f6/go.mod h1:aSSvb/t6k1mPoxDqO4vJh6VOCGPwU4O0C2/Eqndh1Sc=
 github.com/robertkrimen/otto v0.0.0-20180617131154-15f95af6e78d h1:1VUlQbCfkoSGv7qP7Y+ro3ap1P1pPZxgdGVqiTVy5C4=
 github.com/robertkrimen/otto v0.0.0-20180617131154-15f95af6e78d/go.mod h1:xvqspoSXJTIpemEonrMDFq6XzwHYYgToXWj5eRX1OtY=
-github.com/scottferg/Fergulator v0.0.0-20160225174419-6b31addba03c h1:PPu1iZBqMtyjKVDS3bWrxp5RoNlN2mD9pnU42ME+ubI=
-github.com/scottferg/Fergulator v0.0.0-20160225174419-6b31addba03c/go.mod h1:GTWds/cMhq9a0APySp4pdi/B1hScOsEWyzDZjbaJL2E=
-github.com/scottferg/Go-SDL v0.0.0-20140327141634-cb4f73fb88cc h1:XaUBgyHiNACKl/lW73xMFY/c+YT26y/NkxFDzUAqu/w=
-github.com/scottferg/Go-SDL v0.0.0-20140327141634-cb4f73fb88cc/go.mod h1:Q7OT0BXoMQSJAH+jgq6t8oC5FeBJTvtK2nwCmfR10i0=
-github.com/scottferg/fergulator v0.0.0-20160225174419-6b31addba03c h1:djBEPMUSwN4LXuz2zlBwJMUeVcIeB7J1y7DFtzJQWW0=
-github.com/scottferg/fergulator v0.0.0-20160225174419-6b31addba03c/go.mod h1:BA1IqTVPXSJf7WTacg/Mdv+09eZpDvcEbmB1nFvGWNQ=
 github.com/veandco/go-sdl2 v0.3.0 h1:IWYkHMp8V3v37NsKjszln8FFnX2+ab0538J371t+rss=
 github.com/veandco/go-sdl2 v0.3.0/go.mod h1:FB+kTpX9YTE+urhYiClnRzpOXbiWgaU3+5F2AB78DPg=
 github.com/veandco/go-sdl2-examples v0.0.0-20181217010226-b9da832c2306 h1:OKHdojLgfSE5d1Cv1pK0qHn/sc3TjyBQdyBPiVv+Rys=
