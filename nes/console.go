@@ -1,10 +1,11 @@
 package nes
 
 import (
-	"fmt"
-	"image"
 	"io"
-	"time"
+	"io/ioutil"
+	"os"
+	"path"
+	"strings"
 )
 
 const (
@@ -20,88 +21,127 @@ type Console struct {
 	Cartridge   *Cartridge
 	RAM         *RAM
 	CPU         *CPU
+	APU         *APU
 	PPU         *PPU
 	Controller1 *Controller
 
-	bus       *SysBus
-	frameTime time.Duration
+	bus *SysBus
+
+	openFiles []*os.File
 }
 
-func NewConsole(c *Cartridge, pc uint16, debugOut io.Writer) *Console {
-	if c.Mapper != 0 {
-		panic(fmt.Sprintf("unsupported mapper %d", c.Mapper))
+func NewConsole(pc uint16, debugOut io.Writer) *Console {
+	console := &Console{}
+	makeFile := func(channel string) (io.WriteSeeker, error) {
+		name := "TODO"
+		dir, err := os.Getwd()
+		if err != nil {
+			return nil, err
+		}
+		f, err := ioutil.TempFile(dir, strings.TrimSuffix(path.Base(name), path.Ext(name))+"_"+channel+"_*.wav")
+		if err != nil {
+			return nil, err
+		}
+
+		console.openFiles = append(console.openFiles, f)
+		return f, nil
 	}
 
 	ram := NewRAM()
 	ctrl1 := &Controller{}
 
-	ppu := &PPU{
-		Cartridge: c,
-	}
-	ppu.Init()
-
-	cpu := NewCPU(debugOut, ppu)
+	ppu := NewPPU()
+	apu := NewAPU(4096, 48000, makeFile) // TODO: parameterize sample rate
+	cpu := NewCPU(debugOut, ppu, apu)
 
 	bus := &SysBus{
-		Cartridge: c,
-		RAM:       ram,
-		CPU:       cpu,
-		PPU:       ppu,
-		Ctrl1:     ctrl1,
+		RAM:   ram,
+		CPU:   cpu,
+		APU:   apu,
+		PPU:   ppu,
+		Ctrl1: ctrl1,
 	}
 
-	cpu.Init(bus)
 	if pc != 0 {
 		cpu.SetPC(pc)
 	}
 	cpu.Cycles = 7 //TODO
 
-	return &Console{
-		Cartridge:   c,
-		RAM:         ram,
-		CPU:         cpu,
-		PPU:         ppu,
-		Controller1: ctrl1,
-		bus:         bus,
-	}
+	console.RAM = ram
+	console.CPU = cpu
+	console.APU = apu
+	console.PPU = ppu
+	console.Controller1 = ctrl1
+	console.bus = bus
+
+	return console
 }
 
-func (c *Console) FrameTime() time.Duration {
-	return c.frameTime
+func (c *Console) Empty() bool {
+	return c.Cartridge == nil
+}
+
+func (c *Console) Load(cartridge *Cartridge) {
+	first := c.Cartridge == nil
+	c.Cartridge = cartridge
+	c.bus.Cartridge = cartridge
+	c.PPU.Cartridge = cartridge
+
+	if first {
+		c.CPU.Init(c.bus)
+		return
+	}
+
+	c.Reset()
+}
+
+func (c *Console) StartRecording() error {
+	return c.APU.mixer.startRecording()
+}
+
+func (c *Console) PauseRecording() {
+	c.APU.mixer.pauseRecording()
+}
+
+func (c *Console) UnpauseRecording() {
+	c.APU.mixer.unpauseRecording()
+}
+
+func (c *Console) StopRecording() error {
+	return c.APU.mixer.stopRecording()
+}
+
+func (c *Console) Close() error {
+	if err := c.StopRecording(); err != nil {
+		return err
+	}
+
+	var err error
+	for _, f := range c.openFiles {
+		err = f.Close()
+	}
+
+	return err
 }
 
 func (c *Console) Reset() {
 	c.CPU.Reset(c.bus)
-}
-
-func (c *Console) Step() {
-	_ = c.CPU.Execute(c.bus, c.PPU)
-	// for i := uint64(0); i < cycles; i++ {
-	// 	c.PPU.Tick(c.CPU)
-	// 	c.PPU.Tick(c.CPU)
-	// 	c.PPU.Tick(c.CPU)
-	// }
+	c.APU.Reset()
 }
 
 func (c *Console) StepFrame() {
-	start := time.Now()
+	if c.Empty() {
+		return
+	}
+
 	frame := c.PPU.Frame
 	for frame == c.PPU.Frame {
-		c.Step()
+		c.CPU.Execute(c.bus, c.PPU)
 	}
-	c.frameTime = time.Since(start)
-
-}
-func (c *Console) StepScanline() {
-	start := time.Now()
-	scan := c.PPU.ScanLine
-	for scan == c.PPU.ScanLine {
-		c.Step()
-	}
-	c.frameTime = time.Since(start)
+	// fmt.Println(c.PPU.bufferHead)
 }
 
-func (c *Console) Buffer() *image.RGBA {
+func (c *Console) Buffer() []byte {
 	return c.PPU.buffer
 }
 

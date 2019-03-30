@@ -2,84 +2,92 @@ package main
 
 import (
 	"fmt"
-	"image"
 
+	"github.com/flga/nes/cmd/vnes/internal/gui"
 	"github.com/flga/nes/nes"
 	"github.com/veandco/go-sdl2/sdl"
 )
 
 type nametableView struct {
-	*view
+	*gui.View
 
-	showGrid bool
-	buf      *image.RGBA
+	gridList gui.GridList
+	bg       *gui.Background
 }
 
-func newNametableView(scale int) (*nametableView, error) {
+func newNametableView(scale int, fontCache gui.FontMap) (*nametableView, error) {
 	w, h := 256*2, 240*2
 
-	view, err := newView("vnes - nametables", w, h, scale, sdl.WINDOW_HIDDEN|sdl.WINDOW_RESIZABLE, sdl.BLENDMODE_BLEND)
+	view, err := gui.NewView("vnes - nametables", w, h, scale, sdl.WINDOW_HIDDEN|sdl.WINDOW_RESIZABLE, 0, sdl.BLENDMODE_BLEND, fontCache)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create name table view: %s", err)
 	}
 
 	return &nametableView{
-		view: view,
-		buf:  image.NewRGBA(image.Rect(0, 0, w, h)),
+		View: view,
 	}, nil
 }
 
-func (v *nametableView) visible() bool {
-	return v.view.visible
-}
-
-func (v *nametableView) handle(event sdl.Event, console *nes.Console) error {
-	handled, err := v.view.handle(event)
-	if handled {
-		return err
+func (v *nametableView) Init(engine *engine, console *nes.Console) error {
+	v.gridList = gui.GridList{
+		List: []*gui.Grid{
+			&gui.Grid{Rows: 60, Cols: 64, Color: white64, UpdateFn: func(g *gui.Grid) { g.Bounds = *v.Rect }},
+			&gui.Grid{Rows: 8, Cols: 16, Square: true, Color: white128, UpdateFn: func(g *gui.Grid) { g.Bounds = sdl.Rect{W: v.Rect.W, H: v.Rect.H / 2, X: v.Rect.X, Y: v.Rect.Y} }},
+			&gui.Grid{Rows: 8, Cols: 16, Square: true, Color: white128, UpdateFn: func(g *gui.Grid) { g.Bounds = sdl.Rect{W: v.Rect.W, H: v.Rect.H / 2, X: v.Rect.X, Y: v.Rect.H / 2} }},
+			&gui.Grid{Rows: 2, Cols: 2, Borders: true, Color: white, UpdateFn: func(g *gui.Grid) { g.Bounds = *v.Rect }},
+		},
 	}
 
-	switch evt := event.(type) {
-	case *sdl.KeyboardEvent:
-		if evt.Type == sdl.KEYUP && evt.Keysym.Sym == sdl.K_g {
-			v.showGrid = !v.showGrid
-		}
+	v.bg = &gui.Background{
+		UpdateFn: func(r *gui.Background) {
+			if len(r.RGBA8888) < 256*240*4*4 {
+				r.RGBA8888 = make([]byte, 256*240*4*4)
+			}
+			console.PPU.DrawNametables(r.RGBA8888)
+		},
 	}
 
 	return nil
 }
 
-func (v *nametableView) render(console *nes.Console, _ *fpsMeter) error {
-	if !v.visible() {
+func (v *nametableView) Handle(event sdl.Event, console *nes.Console) (handled bool, err error) {
+	if handled, err := v.View.Handle(event, console); handled || err != nil {
+		return handled, err
+	}
+
+	switch evt := event.(type) {
+	case *sdl.KeyboardEvent:
+		if evt.Type == sdl.KEYUP && evt.Keysym.Sym == sdl.K_g {
+			v.gridList.Toggle()
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func (v *nametableView) Update(console *nes.Console, engine *engine) {
+	v.bg.Update(v.View)
+	v.gridList.Update(v.View)
+}
+
+func (v *nametableView) Render() error {
+	if !v.Visible() {
 		return nil
 	}
 
-	if err := v.clear(black); err != nil {
-		return v.errorf("unable to clear view: %s", err)
+	if err := v.Clear(black); err != nil {
+		return v.Errorf("unable to clear view: %s", err)
 	}
 
-	// draw main view
-	console.PPU.DrawNametables(v.buf)
-	if err := drawRGBA(v.view, v.buf.Pix); err != nil {
-		return v.errorf("unable to draw nametables: %s", err)
+	if err := v.bg.Draw(v.View); err != nil {
+		return v.Errorf("unable to draw nametables: %s", err)
 	}
 
-	// draw grid
-	if v.showGrid {
-		if err := drawGrid(v.view, 60, 64, sdl.Rect{}, false, white64); err != nil {
-			return v.errorf("unable to draw grid: %s", err)
-		}
-		if err := drawGrid(v.view, 8, 16, sdl.Rect{H: v.rect.W / 2}, false, white128); err != nil {
-			return v.errorf("unable to draw grid: %s", err)
-		}
-		if err := drawGrid(v.view, 8, 16, sdl.Rect{H: v.rect.W / 2, Y: v.rect.H / 2}, false, white128); err != nil {
-			return v.errorf("unable to draw grid: %s", err)
-		}
-		if err := drawGrid(v.view, 2, 2, sdl.Rect{}, true, white); err != nil {
-			return v.errorf("unable to draw grid: %s", err)
-		}
+	if err := v.gridList.Draw(v.View); err != nil {
+		return v.Errorf("unable to draw grid: %s", err)
 	}
 
-	v.paint()
+	v.Paint()
 	return nil
 }

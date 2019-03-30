@@ -4,6 +4,8 @@ import (
 	"io"
 )
 
+const cpuFreq float64 = 1789773
+
 type Interrupt byte
 
 const (
@@ -136,16 +138,18 @@ type CPU struct {
 	debug     io.Writer
 	interrupt Interrupt
 
-	ppuexperiment *PPU
+	pputemp *PPU
+	aputemp *APU
 }
 
-func NewCPU(debug io.Writer, ppu *PPU) *CPU {
+func NewCPU(debug io.Writer, ppu *PPU, apu *APU) *CPU {
 	return &CPU{
-		debug:         debug,
-		P:             InterruptDisable | Unused,
-		S:             0xFD,
-		PC:            ResetAddr,
-		ppuexperiment: ppu,
+		debug:   debug,
+		P:       InterruptDisable | Unused,
+		S:       0xFD,
+		PC:      ResetAddr,
+		pputemp: ppu,
+		aputemp: apu,
 	}
 }
 
@@ -350,9 +354,10 @@ func (c *CPU) Execute(bus *SysBus, ppu *PPU) uint64 {
 
 func (c *CPU) clock() {
 	c.Cycles++
-	c.ppuexperiment.Tick(c)
-	c.ppuexperiment.Tick(c)
-	c.ppuexperiment.Tick(c)
+	c.pputemp.Tick(c)
+	c.pputemp.Tick(c)
+	c.pputemp.Tick(c)
+	c.aputemp.Clock(c)
 }
 
 func (c *CPU) read(bus *SysBus, address uint16) byte {

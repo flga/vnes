@@ -33,6 +33,7 @@ type SysBus struct {
 	Cartridge *Cartridge
 	RAM       *RAM
 	CPU       *CPU
+	APU       *APU
 	PPU       *PPU
 	Ctrl1     *Controller
 }
@@ -44,6 +45,10 @@ func (bus *SysBus) Read(address uint16) byte {
 
 	if address >= 0x2000 && address <= 0x3FFF {
 		return bus.PPU.ReadPort(address, bus.CPU)
+	}
+
+	if address == 0x4015 {
+		return byte(bus.APU.ReadPort(address))
 	}
 
 	if address == 0x4016 {
@@ -89,23 +94,18 @@ func (bus *SysBus) Write(address uint16, v byte) {
 		return
 	}
 
-	if address == 0x4016 {
-		bus.Ctrl1.Write(v)
-		return
-	}
-
-	if address == 0x4017 {
-		// TODO: ctrl2
-		return
-	}
-
 	if address == 0x4014 {
 		bus.PPU.WritePort(address, v, bus.CPU)
 		return
 	}
 
-	if address < 0x4020 {
-		//TODO: IOReg
+	if address < 0x4014 || address == 0x4015 || address == 0x4017 {
+		bus.APU.WritePort(address, v)
+		return
+	}
+
+	if address == 0x4016 {
+		bus.Ctrl1.Write(v)
 		return
 	}
 

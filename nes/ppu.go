@@ -2,7 +2,6 @@ package nes
 
 import (
 	"fmt"
-	"image"
 	"image/color"
 	"log"
 )
@@ -305,11 +304,14 @@ type PPU struct {
 	nmiSent     bool
 	suppressNMI bool
 
-	buffer *image.RGBA
+	// buffer *image.RGBA
+	buffer []byte
 }
 
-func (p *PPU) Init() {
-	p.buffer = image.NewRGBA(image.Rect(0, 0, 256, 240))
+func NewPPU() *PPU {
+	return &PPU{
+		buffer: make([]byte, 256*240*4),
+	}
 }
 
 func (p *PPU) spritePixel() (pixel, color, priority byte, spriteZero bool) {
@@ -431,12 +433,13 @@ func (p *PPU) render() {
 	}
 
 	paletteIdx := p.readPalette(uint16(col))
-	if p.Status&Sprite0Hit > 0 {
-		// p.buffer.SetRGBA(p.Dot-1, p.ScanLine, color.RGBA{R: 0x46, G: 0xff, B: 0x0a, A: 0xFF})
-		p.buffer.SetRGBA(p.Dot-1, p.ScanLine, palette[paletteIdx])
-	} else {
-		p.buffer.SetRGBA(p.Dot-1, p.ScanLine, palette[paletteIdx])
-	}
+	// p.buffer.SetRGBA(p.Dot-1, p.ScanLine, palette[paletteIdx])
+	c := palette[paletteIdx]
+	pos := p.ScanLine*256*4 + (p.Dot-1)*4
+	p.buffer[pos+0] = c.R
+	p.buffer[pos+1] = c.G
+	p.buffer[pos+2] = c.B
+	p.buffer[pos+3] = c.A
 }
 
 func (p *PPU) Tick(cpu *CPU) {
@@ -545,6 +548,10 @@ func (p *PPU) Tick(cpu *CPU) {
 		p.Status &^= VerticalBlank
 	}
 
+	if p.Dot == 255 && p.ScanLine == 239 {
+		p.Frame++
+	}
+
 	// tick
 	switch {
 	case p.Dot == 340 && preRender:
@@ -553,7 +560,6 @@ func (p *PPU) Tick(cpu *CPU) {
 			p.Dot = 1
 		}
 		p.ScanLine = 0
-		p.Frame++
 	case p.Dot == 340:
 		p.Dot = 0
 		p.ScanLine++
@@ -613,9 +619,9 @@ func (p *PPU) evaluateSprites() {
 	}
 }
 
-func (p *PPU) Buffer() *image.RGBA {
-	return p.buffer
-}
+// func (p *PPU) Buffer() *image.RGBA {
+// 	return p.buffer
+// }
 
 func (p *PPU) ReadPort(address uint16, c *CPU) byte {
 	if address < 0x4000 {
@@ -953,7 +959,11 @@ func (p *PPU) currentlyRendering() bool {
 	return p.renderingEnabled() && (p.ScanLine < 240 || p.ScanLine == 261)
 }
 
-func (p *PPU) DrawPatternTables(buf *image.RGBA, paletteNum byte) {
+func (p *PPU) DrawPatternTables(buf []byte, paletteNum byte) {
+	if p.Cartridge == nil {
+		return
+	}
+
 	draw := func(table uint16, xoffset int) {
 		attr := paletteNum << 2
 
@@ -973,7 +983,13 @@ func (p *PPU) DrawPatternTables(buf *image.RGBA, paletteNum byte) {
 					patternLo <<= 1
 					patternHi <<= 1
 					paletteIndex := p.paletteData[attr|pixello|pixelhi]
-					buf.SetRGBA(xoffset+fineX+pixel, y, palette[paletteIndex])
+					// buf.SetRGBA(xoffset+fineX+pixel, y, palette[paletteIndex])
+					pos := y*128*2*4 + (xoffset+fineX+pixel)*4
+					c := palette[paletteIndex]
+					buf[pos+0] = c.R
+					buf[pos+1] = c.G
+					buf[pos+2] = c.B
+					buf[pos+3] = c.A
 				}
 			}
 		}
@@ -983,7 +999,11 @@ func (p *PPU) DrawPatternTables(buf *image.RGBA, paletteNum byte) {
 	draw(0x1000, 128)
 }
 
-func (p *PPU) DrawNametables(buf *image.RGBA) {
+func (p *PPU) DrawNametables(buf []byte) {
+	if p.Cartridge == nil {
+		return
+	}
+
 	draw := func(nametable, offsetX, offsetY uint16) {
 		patternTable := p.backgroundTable()
 
@@ -1023,7 +1043,13 @@ func (p *PPU) DrawNametables(buf *image.RGBA) {
 					patternLo <<= 1
 					patternHi <<= 1
 					color := p.paletteData[attribute|pixello|pixelhi]
-					buf.SetRGBA(int(offsetX+tileX+pixel), int(offsetY+y), palette[color])
+
+					pos := int(offsetY+y)*256*2*4 + int(offsetX+tileX+pixel)*4
+					c := palette[color]
+					buf[pos+0] = c.R
+					buf[pos+1] = c.G
+					buf[pos+2] = c.B
+					buf[pos+3] = c.A
 				}
 			}
 		}
@@ -1103,7 +1129,7 @@ func (p *PPU) debugDumpSprites() {
 			paletteIdx := p.paletteData[16+(colorUp|pixello|pixelhi)]
 
 			if paletteIdx != 0 && priority == 0 {
-				p.buffer.SetRGBA(int(x)+col, int(spriteY)+int(row), palette[paletteIdx])
+				// p.buffer.SetRGBA(int(x)+col, int(spriteY)+int(row), palette[paletteIdx])
 			}
 		}
 	}
