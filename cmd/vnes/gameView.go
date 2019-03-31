@@ -83,13 +83,14 @@ func (v *gameView) Init(engine *engine, console *nes.Console) error {
 			Disabled: false,
 			UpdateFn: func(m *gui.Message) {
 				if console.Empty() {
-					m.Text = "DROP A ROM"
+					m.Text = "DROP\nA\nROM"
 				} else {
 					m.Text = ""
 				}
 			},
 			Font:       font,
 			Size:       64,
+			Align:      gui.TextAlignCenter,
 			Position:   gui.CenterCenter,
 			Foreground: white,
 			Background: black,

@@ -3,6 +3,7 @@ package gui
 import (
 	"fmt"
 	"image/color"
+	"strings"
 
 	"github.com/flga/nes/cmd/internal/errors"
 	"github.com/veandco/go-sdl2/sdl"
@@ -95,47 +96,140 @@ func (r *Renderer) DrawBackground(rgba8888 []byte, rect *sdl.Rect) error {
 	return nil
 }
 
-func (r *Renderer) DrawText(s string, font *Font, size int, color color.Color, pos *sdl.Rect) (w, h int32, e error) {
+type TextAlign int
+
+const (
+	TextAlignLeft TextAlign = iota
+	TextAlignCenter
+	TextAlignRight
+)
+
+func (r *Renderer) DrawText(s string, font *Font, size int, align TextAlign, color color.Color, pos *sdl.Rect) (int32, int32, error) {
 	if s == "" {
 		return 0, 0, nil
 	}
 
-	cursor := pos.X
-	ratio := int32(size / font.size)
+	type renderOp struct {
+		page int // only used for error ctx
 
-	for _, char := range s {
-		meta, ok := font.chars[char]
-		if !ok {
-			return 0, 0, ErrMissingChar{Face: font.face, Char: char}
-		}
-
-		tex, err := r.getFontTexture(font, meta.page)
-		if err != nil {
-			return 0, 0, err
-		}
-
-		src := &sdl.Rect{
-			W: meta.width,
-			H: meta.height,
-			X: meta.x,
-			Y: meta.y,
-		}
-		dst := &sdl.Rect{
-			W: src.W * ratio,
-			H: src.H * ratio,
-			X: cursor + meta.xOffset*ratio,
-			Y: pos.Y + meta.yOffset*ratio,
-		}
-		cursor += meta.xAdvance * ratio
-
-		if err := tex.SetColorMod(colorMod(color)); err != nil {
-			return 0, 0, fmt.Errorf("font: unable to set color mod of texture of page %d of font %s: %s", meta.page, font.face, err)
-		}
-		if err := r.Renderer.Copy(tex, src, dst); err != nil {
-			return 0, 0, fmt.Errorf("font: unable to render texture of page %d of font %s: %s", meta.page, font.face, err)
-		}
-
+		tex        *sdl.Texture
+		src        *sdl.Rect
+		w, h, x, y int32
 	}
 
-	return cursor, font.lineHeight * ratio, nil
+	var (
+		width, curx, cury int32
+
+		ratio      = int32(size / font.size)
+		lineHeight = font.lineHeight * ratio
+
+		lines     = strings.Split(s, "\n")
+		numLines  = int32(len(lines))
+		renderOps = make([][]renderOp, len(lines))
+	)
+
+	for i := int32(0); i < numLines; i++ {
+		line := lines[i]
+		lastChar := len(line) - 1
+
+		curx = pos.X
+		cury = pos.Y + i*lineHeight
+		renderOps[i] = make([]renderOp, len(line))
+
+		for j, char := range line {
+			meta, ok := font.chars[char]
+			if !ok {
+				return 0, 0, ErrMissingChar{Face: font.face, Char: char}
+			}
+
+			tex, err := r.getFontTexture(font, meta.page)
+			if err != nil {
+				return 0, 0, err
+			}
+
+			op := renderOp{
+				page: meta.page,
+				tex:  tex,
+				src: &sdl.Rect{
+					W: meta.width,
+					H: meta.height,
+					X: meta.x,
+					Y: meta.y,
+				},
+				w: meta.width * ratio,
+				h: meta.height * ratio,
+				x: curx + meta.xOffset*ratio,
+				y: cury + meta.yOffset*ratio,
+			}
+			renderOps[i][j] = op
+
+			var x int32
+			if j == lastChar {
+				x = op.x + op.w
+			} else {
+				curx += meta.xAdvance * ratio
+				x = curx
+			}
+			x -= pos.X
+
+			if x > width {
+				width = x
+			}
+		}
+	}
+
+	for _, opLine := range renderOps {
+		if len(opLine) == 0 {
+			continue
+		}
+
+		var offsetx int32
+		lastChar := opLine[len(opLine)-1]
+
+		switch align {
+		case TextAlignRight:
+			offsetx = width - (lastChar.x + lastChar.w - pos.X)
+		case TextAlignCenter:
+			offsetx = (width - (lastChar.x + lastChar.w - pos.X)) / 2
+		}
+
+		for _, op := range opLine {
+			if err := op.tex.SetColorMod(colorMod(color)); err != nil {
+				return 0, 0, fmt.Errorf("font: unable to set color mod of texture of page %d of font %s: %s", op.page, font.face, err)
+			}
+
+			if err := r.Renderer.Copy(
+				op.tex,
+				op.src,
+				&sdl.Rect{
+					W: op.w,
+					H: op.h,
+					X: op.x + offsetx,
+					Y: op.y,
+				},
+			); err != nil {
+				return 0, 0, fmt.Errorf("font: unable to render texture of page %d of font %s: %s", op.page, font.face, err)
+			}
+		}
+	}
+
+	// // print pre-calculated bounding box
+	// r.Renderer.SetDrawColor(0, 255, 0, 255)
+	// r.Renderer.DrawRect(pos)
+
+	// // print drawn bounding box
+	// r.Renderer.SetDrawColor(255, 0, 0, 255)
+	// r.Renderer.DrawRect(&sdl.Rect{
+	// 	X: pos.X,
+	// 	Y: pos.Y,
+	// 	W: width,
+	// 	H: lineHeight + cury - pos.Y,
+	// })
+
+	return width, lineHeight + cury - pos.Y, nil
+}
+
+func colorMod(color color.Color) (byte, byte, byte) {
+	r, g, b, _ := color.RGBA()
+	return byte(r), byte(g), byte(b)
 }

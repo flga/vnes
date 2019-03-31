@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"image"
-	"image/color"
 	"image/draw"
 	"image/png"
 	"io"
+	"strings"
 
 	"github.com/ftrvxmtrx/tga"
 )
@@ -62,12 +62,31 @@ func (f *Font) Bounds(s string, size int) (w, h int32) {
 	}
 
 	ratio := int32(size / f.size)
+	lines := strings.Split(s, "\n")
+	numLines := int32(len(lines))
 
-	for _, char := range s {
-		w += f.chars[char].xAdvance * ratio
+	for i := int32(0); i < numLines; i++ {
+		var (
+			lw int32
+
+			line     = lines[i]
+			lastChar = len(line) - 1
+		)
+
+		for j, char := range line {
+			if j == lastChar {
+				lw += f.chars[char].width * ratio
+			} else {
+				lw += f.chars[char].xAdvance * ratio
+			}
+		}
+
+		if lw > w {
+			w = lw
+		}
 	}
 
-	return w, f.lineHeight * ratio
+	return w, numLines * f.lineHeight * ratio
 }
 
 type FontMap map[string]*Font
@@ -184,9 +203,4 @@ func decode(r io.ReadCloser) (image.Image, error) {
 	}
 
 	return nil, ErrUnsupported
-}
-
-func colorMod(color color.Color) (byte, byte, byte) {
-	r, g, b, _ := color.RGBA()
-	return byte(r), byte(g), byte(b)
 }

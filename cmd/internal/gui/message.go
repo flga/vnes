@@ -17,6 +17,7 @@ type Message struct {
 	Text       string
 	Font       *Font
 	Size       int
+	Align      TextAlign
 	Padding    Padding
 	Margin     Margin
 	Position   AnchorMode
@@ -71,7 +72,7 @@ func (m *Message) Draw(v *View) error {
 	}
 	anchor(bgrect, m.Position, &m.viewRect, m.Margin)
 
-	if err := DrawRect(v.Renderer, bgrect, m.Background); err != nil {
+	if err := drawRect(v.Renderer, bgrect, m.Background); err != nil {
 		return fmt.Errorf("drawMessage: unable to draw background: %s", err)
 	}
 
@@ -86,7 +87,7 @@ func (m *Message) Draw(v *View) error {
 		Left:   m.Padding.Left + m.Margin.Left,
 	})
 
-	if _, _, err := v.Renderer.DrawText(m.Text, m.Font, m.Size, m.Foreground, msgRect); err != nil {
+	if _, _, err := v.Renderer.DrawText(m.Text, m.Font, m.Size, m.Align, m.Foreground, msgRect); err != nil {
 		return fmt.Errorf("drawMessage: unable to render message: %s", err)
 	}
 
