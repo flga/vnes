@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"image/color"
 
-	"github.com/flga/nes/cmd/vnes/internal/errors"
+	"github.com/flga/nes/cmd/internal/errors"
 	"github.com/veandco/go-sdl2/sdl"
 )
 

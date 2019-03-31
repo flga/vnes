@@ -1,6 +1,7 @@
 module github.com/flga/nes
 
 require (
+	github.com/bmatcuk/doublestar v1.1.1
 	github.com/ftrvxmtrx/tga v0.0.0-20150524081124-bd8e8d5be13a
 	github.com/go-audio/wav v0.0.0-20181013172942-de841e69b884
 	github.com/gordonklaus/portaudio v0.0.0-20180817120803-00e7307ccd93

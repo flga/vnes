@@ -1,3 +1,5 @@
+github.com/bmatcuk/doublestar v1.1.1 h1:YroD6BJCZBYx06yYFEWvUuKVWQn3vLLQAVmDmvTSaiQ=
+github.com/bmatcuk/doublestar v1.1.1/go.mod h1:UD6OnuiIn0yFxxA2le/rnRU1G4RaI4UvFv1sNto9p6w=
 github.com/ftrvxmtrx/tga v0.0.0-20150524081124-bd8e8d5be13a h1:eSqaRmdlZ9JsJ7JuWfDr3ym3monToXRczohBOL+heVQ=
 github.com/ftrvxmtrx/tga v0.0.0-20150524081124-bd8e8d5be13a/go.mod h1:US5WvgEHtG+BvWNNs6gk937h0QL2g2x+r7RH8m3g80Y=
 github.com/go-audio/aiff v0.0.0-20180403003018-6c3a8a6aff12/go.mod h1:AMSAp6W1zd0koOdX6QDgGIuBDTUvLa2SLQtm7d9eM3c=

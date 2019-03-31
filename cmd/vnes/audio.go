@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sync/atomic"
 
+	"github.com/flga/nes/cmd/internal/errors"
+
 	"github.com/gordonklaus/portaudio"
 )
 
@@ -24,7 +26,7 @@ func (a *audioEngine) deferFn(fn func() error) {
 func (a *audioEngine) quit() error {
 	a.envelope.close()
 
-	var errorList *errorList
+	var errorList errors.List
 	for i := len(a.freeFuncs) - 1; i >= 0; i-- {
 		errorList = errorList.Add(a.freeFuncs[i]())
 	}
@@ -51,8 +53,6 @@ func (a *audioEngine) init(lowLatency bool) error {
 
 	a.streamParams.SampleRate = 48000
 	a.streamParams.FramesPerBuffer = 2048
-
-	fmt.Println("SampleRate", a.streamParams.SampleRate)
 
 	a.envelope = newEnvelope(float32(a.streamParams.SampleRate/2.0), float32(a.streamParams.SampleRate/2.0))
 

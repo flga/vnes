@@ -36,5 +36,3 @@ COPY assets assets/
 COPY cmd cmd/
 COPY nes nes/
 COPY Makefile LICENSE README.md ./
-
-RUN make dist

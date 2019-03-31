@@ -1,5 +1,7 @@
 package main
 
+//go:generate go run ../embed -root ../../ -o assets.go -exclude ../../assets/**/*.{ttf} ../../assets/**
+
 import (
 	"context"
 	"flag"
@@ -12,7 +14,7 @@ import (
 	"runtime/pprof"
 	"syscall"
 
-	"github.com/flga/nes/cmd/vnes/internal/gui"
+	"github.com/flga/nes/cmd/internal/gui"
 	"github.com/flga/nes/nes"
 	"github.com/veandco/go-sdl2/sdl"
 )
@@ -30,25 +32,21 @@ func initSDL() (func(), error) {
 }
 
 func initTTF() (gui.FontMap, error) {
-	fontMap := make(gui.FontMap)
+	fontPath := filepath.Join("assets", "runescape_uf.fnt")
+	f, err := assets.Open(fontPath)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
 
-	loadFont := func(path string) error {
-		f, err := os.Open(path)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-
-		openFunc := func(path string) (io.ReadCloser, error) {
-			return os.Open(filepath.Join("assets", path))
-		}
-
-		return fontMap.LoadXML(f, openFunc)
+	openFunc := func(path string) (io.ReadCloser, error) {
+		// return os.Open(filepath.Join("assets", path))
+		return assets.Open(filepath.Join("assets", path))
 	}
 
-	path := "assets/runescape_uf.fnt"
-	if err := loadFont(path); err != nil {
-		return nil, fmt.Errorf("initTTF: unable to load font %s: %s", path, err)
+	fontMap := make(gui.FontMap)
+	if err := fontMap.LoadXML(f, openFunc); err != nil {
+		return nil, fmt.Errorf("initTTF: unable to load font %s: %s", fontPath, err)
 	}
 
 	return fontMap, nil

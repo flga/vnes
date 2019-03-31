@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/flga/nes/cmd/vnes/internal/gui"
+	"github.com/flga/nes/cmd/internal/gui"
 	"github.com/flga/nes/nes"
 	"github.com/veandco/go-sdl2/sdl"
 )

@@ -5,7 +5,7 @@ import (
 	"image/color"
 	"math"
 
-	"github.com/flga/nes/cmd/vnes/internal/errors"
+	"github.com/flga/nes/cmd/internal/errors"
 	"github.com/flga/nes/nes"
 
 	"github.com/veandco/go-sdl2/sdl"
@@ -19,10 +19,10 @@ type View struct {
 	height int32
 	scale  int32
 
+	focused    bool
 	visible    bool
 	fullscreen bool
 	vsync      bool
-
 	// FlashMsg  string
 	// FlashTTL  time.Time
 	// StatusMsg string
@@ -40,6 +40,7 @@ func NewView(title string, w, h, scale int, windowOptions, rendererOptions uint3
 		width:      int32(w),
 		height:     int32(h),
 		scale:      int32(scale),
+		focused:    windowOptions&sdl.WINDOW_INPUT_FOCUS > 0,
 		visible:    windowOptions&sdl.WINDOW_SHOWN > 0,
 		fullscreen: windowOptions&sdl.WINDOW_FULLSCREEN > 0 || windowOptions&sdl.WINDOW_FULLSCREEN_DESKTOP > 0,
 		vsync:      rendererOptions&sdl.RENDERER_PRESENTVSYNC > 0,
@@ -98,7 +99,7 @@ func (v *View) Destroy() error {
 }
 
 func (v *View) Focused() bool {
-	return v.window.GetFlags()&sdl.WINDOW_INPUT_FOCUS > 0
+	return v.focused
 }
 
 func (v *View) Visible() bool {
@@ -179,13 +180,24 @@ func (v *View) resize() {
 
 func (v *View) Handle(event sdl.Event, console *nes.Console) (handled bool, err error) {
 	switch evt := event.(type) {
+
 	case *sdl.WindowEvent:
+		if evt.Event == sdl.WINDOWEVENT_FOCUS_GAINED {
+			v.focused = true
+			return true, nil
+		}
+
+		if evt.Event == sdl.WINDOWEVENT_FOCUS_LOST {
+			v.focused = false
+			return true, nil
+		}
+
 		if evt.Event == sdl.WINDOWEVENT_CLOSE {
 			v.Hide()
 			return true, nil
 		}
 
-		if evt.Event == sdl.WINDOWEVENT_RESIZED {
+		if evt.Event == sdl.WINDOWEVENT_SIZE_CHANGED {
 			v.resize()
 			return true, nil
 		}
@@ -202,11 +214,17 @@ func (v *View) Handle(event sdl.Event, console *nes.Console) (handled bool, err 
 func (v *View) ToggleFullscreen() error {
 	if v.fullscreen {
 		v.fullscreen = false
+		if _, err := sdl.ShowCursor(1); err != nil {
+			return err
+		}
 		return v.window.SetFullscreen(0)
 	}
 
 	v.fullscreen = true
-	return v.window.SetFullscreen(sdl.WINDOW_FULLSCREEN)
+	if _, err := sdl.ShowCursor(0); err != nil {
+		return err
+	}
+	return v.window.SetFullscreen(sdl.WINDOW_FULLSCREEN_DESKTOP)
 }
 
 func (v *View) ToggleVSync() error {

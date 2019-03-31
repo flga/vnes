@@ -1,6 +1,7 @@
 package errors
 
 import (
+	"fmt"
 	"strings"
 )
 
@@ -20,6 +21,14 @@ func (e List) Add(errors ...error) List {
 	}
 
 	return e
+}
+
+func (e List) Errorf(format string, args ...interface{}) error {
+	if e == nil {
+		return nil
+	}
+
+	return fmt.Errorf(format, args...)
 }
 
 func (e List) Error() string {
