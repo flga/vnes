@@ -64,7 +64,7 @@ func (item *MenuItem) Visible() bool {
 type Menu struct {
 	Tag        string
 	Disabled   bool
-	Position   AnchorMode
+	Position   Align
 	Margin     Margin
 	Background color.RGBA
 	Backdrop   color.RGBA
@@ -205,7 +205,7 @@ func (m *Menu) Draw(v *View) error {
 			valueColor = item.Value.Hover
 		}
 
-		_, lh, err := v.Renderer.DrawText(item.Label.Text, item.Label.Font, item.Label.Size, TextAlignLeft, labelColor, &sdl.Rect{
+		_, lh, err := v.Renderer.DrawText(item.Label.Text, item.Label.Font, item.Label.Size, Left, labelColor, &sdl.Rect{
 			X: x0 + item.Label.Padding.Left,
 			Y: y0 + item.Label.Padding.Top + y,
 		})
@@ -213,7 +213,7 @@ func (m *Menu) Draw(v *View) error {
 			return fmt.Errorf("menu: unable to draw label %q: %s", item.Label.Text, err)
 		}
 
-		_, vh, err := v.Renderer.DrawText(item.Value.Text, item.Value.Font, item.Value.Size, TextAlignLeft, valueColor, &sdl.Rect{
+		_, vh, err := v.Renderer.DrawText(item.Value.Text, item.Value.Font, item.Value.Size, Left, valueColor, &sdl.Rect{
 			X: x0 + maxLabelWidth + item.Value.Padding.Left,
 			Y: y0 + y + item.Value.Padding.Top,
 		})

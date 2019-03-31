@@ -96,15 +96,7 @@ func (r *Renderer) DrawBackground(rgba8888 []byte, rect *sdl.Rect) error {
 	return nil
 }
 
-type TextAlign int
-
-const (
-	TextAlignLeft TextAlign = iota
-	TextAlignCenter
-	TextAlignRight
-)
-
-func (r *Renderer) DrawText(s string, font *Font, size int, align TextAlign, color color.Color, pos *sdl.Rect) (int32, int32, error) {
+func (r *Renderer) DrawText(s string, font *Font, size int, align Align, color color.Color, pos *sdl.Rect) (int32, int32, error) {
 	if s == "" {
 		return 0, 0, nil
 	}
@@ -187,9 +179,9 @@ func (r *Renderer) DrawText(s string, font *Font, size int, align TextAlign, col
 		lastChar := opLine[len(opLine)-1]
 
 		switch align {
-		case TextAlignRight:
+		case Right:
 			offsetx = width - (lastChar.x + lastChar.w - pos.X)
-		case TextAlignCenter:
+		case Center:
 			offsetx = (width - (lastChar.x + lastChar.w - pos.X)) / 2
 		}
 

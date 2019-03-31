@@ -17,10 +17,10 @@ type Message struct {
 	Text       string
 	Font       *Font
 	Size       int
-	Align      TextAlign
+	Align      Align
 	Padding    Padding
 	Margin     Margin
-	Position   AnchorMode
+	Position   Align
 	Foreground color.RGBA
 	Background color.RGBA
 

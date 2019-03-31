@@ -64,49 +64,46 @@ type Padding struct {
 
 type Margin Padding
 
-type AnchorMode byte
+type Align byte
 
 const (
-	TopLeft AnchorMode = iota
-	TopCenter
-	TopRight
-	CenterLeft
-	CenterCenter
-	CenterRight
-	BottomLeft
-	BottomCenter
-	BottomRight
+	Left Align = 1 << iota
+	Right
+	Center
+	Top
+	Middle
+	Bottom
 )
 
-func anchor(rect *sdl.Rect, a AnchorMode, target *sdl.Rect, m Margin) {
+func anchor(rect *sdl.Rect, a Align, target *sdl.Rect, m Margin) {
 	switch a {
-	case TopLeft:
+	case Top | Left:
 		rect.Y = target.Y + m.Top
 		rect.X = target.X + m.Left
-	case TopCenter:
+	case Top | Center:
 		rect.Y = target.Y + m.Top
 		rect.X = target.X + target.W/2 - rect.W/2
-	case TopRight:
+	case Top | Right:
 		rect.Y = target.Y + m.Top
 		rect.X = target.X + target.W - rect.W - m.Right
 
-	case CenterLeft:
+	case Middle | Left:
 		rect.Y = target.Y + target.H/2 - rect.H/2
 		rect.X = target.X + m.Left
-	case CenterCenter:
+	case Middle | Center:
 		rect.Y = target.Y + target.H/2 - rect.H/2
 		rect.X = target.X + target.W/2 - rect.W/2
-	case CenterRight:
+	case Middle | Right:
 		rect.Y = target.Y + target.H/2 - rect.H/2
 		rect.X = target.X + target.W - rect.W - m.Right
 
-	case BottomLeft:
+	case Bottom | Left:
 		rect.Y = target.Y + target.H - rect.H - m.Bottom
 		rect.X = target.X + m.Left
-	case BottomCenter:
+	case Bottom | Center:
 		rect.Y = target.Y + target.H - rect.H - m.Bottom
 		rect.X = target.X + target.W/2 - rect.W/2
-	case BottomRight:
+	case Bottom | Right:
 		rect.Y = target.Y + target.H - rect.H - m.Bottom
 		rect.X = target.X + target.W - rect.W - m.Right
 	}

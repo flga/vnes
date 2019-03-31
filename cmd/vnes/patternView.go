@@ -50,7 +50,7 @@ func (v *patternView) Init(engine *engine, console *nes.Console) error {
 			Font:       font,
 			Size:       64,
 			Padding:    gui.Padding{Top: 10, Right: 10, Bottom: 10, Left: 10},
-			Position:   gui.CenterCenter,
+			Position:   gui.Middle | gui.Center,
 			Foreground: white,
 			Background: black128,
 		},
