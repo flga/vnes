@@ -6,25 +6,25 @@ import (
 
 const cpuFreq float64 = 1789773
 
-type Interrupt byte
+type interrupt byte
 
 const (
-	None Interrupt = iota
-	NMI
-	NMI_Next
-	IRQ
+	none interrupt = iota
+	nmi
+	nmiNext
+	irq
 )
 
 const (
-	NMIAddr     = uint16(0xFFFA)
-	ResetAddr   = uint16(0xFFFC)
-	IRQ_BRKAddr = uint16(0xFFFE)
+	nmiAddr    = uint16(0xFFFA)
+	resetAddr  = uint16(0xFFFC)
+	irqBrkAddr = uint16(0xFFFE)
 
 	stackHi = 0x0100
 )
 
-// Status are all the flags that represent the processor status.
-type Status byte
+// status are all the flags that represent the processor status.
+type status byte
 
 const (
 	// Carry flag.
@@ -37,35 +37,35 @@ const (
 	//
 	// Increment and decrement instructions do not affect the carry flag.
 	// Can be set or cleared directly with SEC, CLC.
-	Carry Status = 1 << iota
+	carry status = 1 << iota
 
 	// Zero flag is set when the result of an instruction is zero.
-	Zero
+	zero
 
 	// InterruptDisable flag.
 	//
 	// When set, all interrupts except the NMI are inhibited.
 	// Can be set or cleared directly with SEI, CLI.
-	// Automatically set by the CPU when an IRQ is triggered, and restored
+	// Automatically set by the cpu when an IRQ is triggered, and restored
 	// to its previous state by RTI.
 	//
 	// If the /IRQ line is low (IRQ pending) when this flag is cleared, an
 	// interrupt will immediately be triggered.
-	InterruptDisable
+	interruptDisable
 
 	// Decimal flag. On the NES, this flag has no effect.
-	Decimal
+	decimal
 
 	// Break flag.
 	//
 	// While there are only six flags in the processor status register within
-	// the CPU, when transferred to the stack, there are two additional bits.
+	// the cpu, when transferred to the stack, there are two additional bits.
 	//
 	// These do not represent a register that can hold a value but can be used
 	// to distinguish how the flags were pushed.
 	//
 	// Some 6502 references call this the "B flag", though it does not represent
-	// an actual CPU register.
+	// an actual cpu register.
 	//
 	// Two interrupts (/IRQ and /NMI) and two instructions (PHP and BRK) push
 	// the flags to the stack.
@@ -78,10 +78,10 @@ const (
 	//
 	// The only way for an IRQ handler to distinguish /IRQ from BRK is to read
 	// the flags byte from the stack and test Break.
-	Break
+	brk
 
 	// Unused flag.
-	Unused
+	unused
 
 	// Overflow flag.
 	//
@@ -92,472 +92,472 @@ const (
 	// BIT will load bit 6 of the addressed value directly into the V flag.
 	// Can be cleared directly with CLV.
 	// There is no corresponding set instruction.
-	Overflow
+	overflow
 
 	// Negative flag.
 	//
 	// After most instructions that have a value result, this flag will contain
 	// bit 7 of that result.
 	// BIT will load bit 7 of the addressed value directly into the N flag.
-	Negative
+	negative
 )
 
-type CPU struct {
-	Cycles uint64
+type cpu struct {
+	cycles uint64
 
 	// A, along with the arithmetic logic unit (ALU), supports using the status
 	// register for carrying, overflow detection, and so on.
-	A byte
+	a byte
 
 	// X and Y are used for several addressing modes. They can be used as loop
 	// counters easily, using INC/DEC and branch instructions.
 	//
 	// Not being the accumulator, they have limited addressing modes themselves
 	// when loading and saving.
-	X, Y byte
+	x, y byte
 
 	// The program counter PC supports 65536 direct (unbanked) memory locations,
 	// however not all values are sent to the cartridge.
 	//
-	// It can be accessed either by allowing CPU's internal fetch logic
+	// It can be accessed either by allowing cpu's internal fetch logic
 	// increment the address bus, an interrupt (NMI, Reset, IRQ/BRQ), and using
 	// the RTS/JMP/JSR/Branch instructions.
-	PC uint16
+	pc uint16
 
 	// The Stack Pointer can be accessed using interrupts, pulls, pushes, and
 	// transfers.
-	S byte
+	s byte
 
 	// The Status Register has 6 bits used by the ALU but is byte-wide.
 	// PHP, PLP, arithmetic, testing, and branch instructions can access this
 	// register.
 	//
 	// See Status for more info.
-	P Status
+	p status
 
 	debug     io.Writer
-	interrupt Interrupt
+	interrupt interrupt
 
-	pputemp *PPU
-	aputemp *APU
+	pputemp *ppu
+	aputemp *apu
 }
 
-func NewCPU(debug io.Writer, ppu *PPU, apu *APU) *CPU {
-	return &CPU{
+func newCpu(debug io.Writer, ppu *ppu, apu *apu) *cpu {
+	return &cpu{
 		debug:   debug,
-		P:       InterruptDisable | Unused,
-		S:       0xFD,
-		PC:      ResetAddr,
+		p:       interruptDisable | unused,
+		s:       0xFD,
+		pc:      resetAddr,
 		pputemp: ppu,
 		aputemp: apu,
 	}
 }
 
-func (c *CPU) Init(bus *SysBus) {
-	c.PC = c.readAddress(bus, ResetAddr)
+func (c *cpu) init(bus *sysBus) {
+	c.pc = c.readAddress(bus, resetAddr)
 }
 
-func (c *CPU) SetPC(pc uint16) {
-	c.PC = pc
+func (c *cpu) setPC(pc uint16) {
+	c.pc = pc
 }
 
-func (c *CPU) Reset(bus *SysBus) {
-	c.P |= InterruptDisable
-	c.S -= 3
+func (c *cpu) reset(bus *sysBus) {
+	c.p |= interruptDisable
+	c.s -= 3
 
-	c.PC = c.readAddress(bus, ResetAddr)
+	c.pc = c.readAddress(bus, resetAddr)
 }
 
-func (c *CPU) Trigger(interrupt Interrupt) {
-	if interrupt == IRQ && c.P&InterruptDisable > 0 {
+func (c *cpu) trigger(interrupt interrupt) {
+	if interrupt == irq && c.p&interruptDisable > 0 {
 		return
 	}
 
 	c.interrupt = interrupt
 }
 
-func (c *CPU) Execute(bus *SysBus, ppu *PPU) uint64 {
-	oldCycles := c.Cycles
+func (c *cpu) execute(bus *sysBus) uint64 {
+	oldCycles := c.cycles
 
 	c.handleInterrupts(bus)
 
-	initialPc := c.PC
+	initialPc := c.pc
 
-	opCode := c.read(bus, c.PC)
-	c.PC++
+	opCode := c.read(bus, c.pc)
+	c.pc++
 
 	inst := instructions[opCode]
 	intermediateAddr, addr := c.resolveAddress(bus, inst)
 
 	if c.debug != nil {
 		//TODO: rework disassembly/tracing
-		disassemble(c.debug, bus, initialPc, c.A, c.X, c.Y, byte(c.P), c.S, inst, intermediateAddr, addr, oldCycles, ppu)
+		disassemble(c.debug, bus, initialPc, c.a, c.x, c.y, byte(c.p), c.s, inst, intermediateAddr, addr, oldCycles, c.pputemp)
 	}
 
 	switch opCode {
 	case 0x04, 0x0C, 0x14, 0x1A, 0x1C, 0x34, 0x3A, 0x3C, 0x44, 0x54, 0x5A,
 		0x5C, 0x64, 0x74, 0x7A, 0x7C, 0x80, 0x82, 0x89, 0xC2, 0xD4, 0xDA,
 		0xDC, 0xE2, 0xEA, 0xF4, 0xFA, 0xFC:
-		c.NOP(bus, inst.Mode, addr)
+		c.nop(bus, inst.mode, addr)
 	case 0x61, 0x65, 0x69, 0x6D, 0x71, 0x75, 0x79, 0x7D:
-		c.ADC(bus, inst.Mode, addr)
+		c.adc(bus, inst.mode, addr)
 	case 0x93, 0x9F:
-		c.AHX(bus, inst.Mode, addr)
+		c.ahx(bus, inst.mode, addr)
 	case 0x4B:
-		c.ALR(bus, inst.Mode, addr)
+		c.alr(bus, inst.mode, addr)
 	case 0x0B, 0x2B:
-		c.ANC(bus, inst.Mode, addr)
+		c.anc(bus, inst.mode, addr)
 	case 0x21, 0x25, 0x29, 0x2D, 0x31, 0x35, 0x39, 0x3D:
-		c.AND(bus, inst.Mode, addr)
+		c.and(bus, inst.mode, addr)
 	case 0x6B:
-		c.ARR(bus, inst.Mode, addr)
+		c.arr(bus, inst.mode, addr)
 	case 0x06, 0x0A, 0x0E, 0x16, 0x1E:
-		c.ASL(bus, inst.Mode, addr)
+		c.asl(bus, inst.mode, addr)
 	case 0xCB:
-		c.AXS(bus, inst.Mode, addr)
+		c.axs(bus, inst.mode, addr)
 	case 0x90:
-		c.BCC(bus, inst.Mode, addr)
+		c.bcc(bus, inst.mode, addr)
 	case 0xB0:
-		c.BCS(bus, inst.Mode, addr)
+		c.bcs(bus, inst.mode, addr)
 	case 0xF0:
-		c.BEQ(bus, inst.Mode, addr)
+		c.beq(bus, inst.mode, addr)
 	case 0x24, 0x2C:
-		c.BIT(bus, inst.Mode, addr)
+		c.bit(bus, inst.mode, addr)
 	case 0x30:
-		c.BMI(bus, inst.Mode, addr)
+		c.bmi(bus, inst.mode, addr)
 	case 0xD0:
-		c.BNE(bus, inst.Mode, addr)
+		c.bne(bus, inst.mode, addr)
 	case 0x10:
-		c.BPL(bus, inst.Mode, addr)
+		c.bpl(bus, inst.mode, addr)
 	case 0x00:
-		c.BRK(bus, inst.Mode, addr)
+		c.brk(bus, inst.mode, addr)
 	case 0x50:
-		c.BVC(bus, inst.Mode, addr)
+		c.bvc(bus, inst.mode, addr)
 	case 0x70:
-		c.BVS(bus, inst.Mode, addr)
+		c.bvs(bus, inst.mode, addr)
 	case 0x18:
-		c.CLC(bus, inst.Mode, addr)
+		c.clc(bus, inst.mode, addr)
 	case 0xD8:
-		c.CLD(bus, inst.Mode, addr)
+		c.cld(bus, inst.mode, addr)
 	case 0x58:
-		c.CLI(bus, inst.Mode, addr)
+		c.cli(bus, inst.mode, addr)
 	case 0xB8:
-		c.CLV(bus, inst.Mode, addr)
+		c.clv(bus, inst.mode, addr)
 	case 0xC1, 0xC5, 0xC9, 0xCD, 0xD1, 0xD5, 0xD9, 0xDD:
-		c.CMP(bus, inst.Mode, addr)
+		c.cmp(bus, inst.mode, addr)
 	case 0xE0, 0xE4, 0xEC:
-		c.CPX(bus, inst.Mode, addr)
+		c.cpx(bus, inst.mode, addr)
 	case 0xC0, 0xC4, 0xCC:
-		c.CPY(bus, inst.Mode, addr)
+		c.cpy(bus, inst.mode, addr)
 	case 0xC3, 0xC7, 0xCF, 0xD3, 0xD7, 0xDB, 0xDF:
-		c.DCP(bus, inst.Mode, addr)
+		c.dcp(bus, inst.mode, addr)
 	case 0xC6, 0xCE, 0xD6, 0xDE:
-		c.DEC(bus, inst.Mode, addr)
+		c.dec(bus, inst.mode, addr)
 	case 0xCA:
-		c.DEX(bus, inst.Mode, addr)
+		c.dex(bus, inst.mode, addr)
 	case 0x88:
-		c.DEY(bus, inst.Mode, addr)
+		c.dey(bus, inst.mode, addr)
 	case 0x41, 0x45, 0x49, 0x4D, 0x51, 0x55, 0x59, 0x5D:
-		c.EOR(bus, inst.Mode, addr)
+		c.eor(bus, inst.mode, addr)
 	case 0xE6, 0xEE, 0xF6, 0xFE:
-		c.INC(bus, inst.Mode, addr)
+		c.inc(bus, inst.mode, addr)
 	case 0xE8:
-		c.INX(bus, inst.Mode, addr)
+		c.inx(bus, inst.mode, addr)
 	case 0xC8:
-		c.INY(bus, inst.Mode, addr)
+		c.iny(bus, inst.mode, addr)
 	case 0xE3, 0xE7, 0xEF, 0xF3, 0xF7, 0xFB, 0xFF:
-		c.ISC(bus, inst.Mode, addr)
+		c.isc(bus, inst.mode, addr)
 	case 0x4C, 0x6C:
-		c.JMP(bus, inst.Mode, addr)
+		c.jmp(bus, inst.mode, addr)
 	case 0x20:
-		c.JSR(bus, inst.Mode, addr)
+		c.jsr(bus, inst.mode, addr)
 	case 0x02, 0x12, 0x22, 0x32, 0x42, 0x52, 0x62, 0x72, 0x92, 0xB2, 0xD2, 0xF2:
-		c.KIL(bus, inst.Mode, addr)
+		c.kil(bus, inst.mode, addr)
 	case 0xBB:
-		c.LAS(bus, inst.Mode, addr)
+		c.las(bus, inst.mode, addr)
 	case 0xA3, 0xA7, 0xAB, 0xAF, 0xB3, 0xB7, 0xBF:
-		c.LAX(bus, inst.Mode, addr)
+		c.lax(bus, inst.mode, addr)
 	case 0xA1, 0xA5, 0xA9, 0xAD, 0xB1, 0xB5, 0xB9, 0xBD:
-		c.LDA(bus, inst.Mode, addr)
+		c.lda(bus, inst.mode, addr)
 	case 0xA2, 0xA6, 0xAE, 0xB6, 0xBE:
-		c.LDX(bus, inst.Mode, addr)
+		c.ldx(bus, inst.mode, addr)
 	case 0xA0, 0xA4, 0xAC, 0xB4, 0xBC:
-		c.LDY(bus, inst.Mode, addr)
+		c.ldy(bus, inst.mode, addr)
 	case 0x46, 0x4A, 0x4E, 0x56, 0x5E:
-		c.LSR(bus, inst.Mode, addr)
+		c.lsr(bus, inst.mode, addr)
 	case 0x01, 0x05, 0x09, 0x0D, 0x11, 0x15, 0x19, 0x1D:
-		c.ORA(bus, inst.Mode, addr)
+		c.ora(bus, inst.mode, addr)
 	case 0x48:
-		c.PHA(bus, inst.Mode, addr)
+		c.pha(bus, inst.mode, addr)
 	case 0x08:
-		c.PHP(bus, inst.Mode, addr)
+		c.php(bus, inst.mode, addr)
 	case 0x68:
-		c.PLA(bus, inst.Mode, addr)
+		c.pla(bus, inst.mode, addr)
 	case 0x28:
-		c.PLP(bus, inst.Mode, addr)
+		c.plp(bus, inst.mode, addr)
 	case 0x23, 0x27, 0x2F, 0x33, 0x37, 0x3B, 0x3F:
-		c.RLA(bus, inst.Mode, addr)
+		c.rla(bus, inst.mode, addr)
 	case 0x26, 0x2A, 0x2E, 0x36, 0x3E:
-		c.ROL(bus, inst.Mode, addr)
+		c.rol(bus, inst.mode, addr)
 	case 0x66, 0x6A, 0x6E, 0x76, 0x7E:
-		c.ROR(bus, inst.Mode, addr)
+		c.ror(bus, inst.mode, addr)
 	case 0x63, 0x67, 0x6F, 0x73, 0x77, 0x7B, 0x7F:
-		c.RRA(bus, inst.Mode, addr)
+		c.rra(bus, inst.mode, addr)
 	case 0x40:
-		c.RTI(bus, inst.Mode, addr)
+		c.rti(bus, inst.mode, addr)
 	case 0x60:
-		c.RTS(bus, inst.Mode, addr)
+		c.rts(bus, inst.mode, addr)
 	case 0x83, 0x87, 0x8F, 0x97:
-		c.SAX(bus, inst.Mode, addr)
+		c.sax(bus, inst.mode, addr)
 	case 0xE1, 0xE5, 0xE9, 0xEB, 0xED, 0xF1, 0xF5, 0xF9, 0xFD:
-		c.SBC(bus, inst.Mode, addr)
+		c.sbc(bus, inst.mode, addr)
 	case 0x38:
-		c.SEC(bus, inst.Mode, addr)
+		c.sec(bus, inst.mode, addr)
 	case 0xF8:
-		c.SED(bus, inst.Mode, addr)
+		c.sed(bus, inst.mode, addr)
 	case 0x78:
-		c.SEI(bus, inst.Mode, addr)
+		c.sei(bus, inst.mode, addr)
 	case 0x9E:
-		c.SHX(bus, inst.Mode, addr)
+		c.shx(bus, inst.mode, addr)
 	case 0x9C:
-		c.SHY(bus, inst.Mode, addr)
+		c.shy(bus, inst.mode, addr)
 	case 0x03, 0x07, 0x0F, 0x13, 0x17, 0x1B, 0x1F:
-		c.SLO(bus, inst.Mode, addr)
+		c.slo(bus, inst.mode, addr)
 	case 0x43, 0x47, 0x4F, 0x53, 0x57, 0x5B, 0x5F:
-		c.SRE(bus, inst.Mode, addr)
+		c.sre(bus, inst.mode, addr)
 	case 0x81, 0x85, 0x8D, 0x91, 0x95, 0x99, 0x9D:
-		c.STA(bus, inst.Mode, addr)
+		c.sta(bus, inst.mode, addr)
 	case 0x86, 0x8E, 0x96:
-		c.STX(bus, inst.Mode, addr)
+		c.stx(bus, inst.mode, addr)
 	case 0x84, 0x8C, 0x94:
-		c.STY(bus, inst.Mode, addr)
+		c.sty(bus, inst.mode, addr)
 	case 0x9B:
-		c.TAS(bus, inst.Mode, addr)
+		c.tas(bus, inst.mode, addr)
 	case 0xAA:
-		c.TAX(bus, inst.Mode, addr)
+		c.tax(bus, inst.mode, addr)
 	case 0xA8:
-		c.TAY(bus, inst.Mode, addr)
+		c.tay(bus, inst.mode, addr)
 	case 0xBA:
-		c.TSX(bus, inst.Mode, addr)
+		c.tsx(bus, inst.mode, addr)
 	case 0x8A:
-		c.TXA(bus, inst.Mode, addr)
+		c.txa(bus, inst.mode, addr)
 	case 0x9A:
-		c.TXS(bus, inst.Mode, addr)
+		c.txs(bus, inst.mode, addr)
 	case 0x98:
-		c.TYA(bus, inst.Mode, addr)
+		c.tya(bus, inst.mode, addr)
 	case 0x8B:
-		c.XAA(bus, inst.Mode, addr)
+		c.xaa(bus, inst.mode, addr)
 	}
 
-	return c.Cycles - oldCycles
+	return c.cycles - oldCycles
 }
 
-func (c *CPU) clock() {
-	c.Cycles++
-	c.pputemp.Tick(c)
-	c.pputemp.Tick(c)
-	c.pputemp.Tick(c)
-	c.aputemp.Clock(c)
+func (c *cpu) clock() {
+	c.cycles++
+	c.pputemp.tick(c)
+	c.pputemp.tick(c)
+	c.pputemp.tick(c)
+	c.aputemp.clock(c)
 }
 
-func (c *CPU) read(bus *SysBus, address uint16) byte {
+func (c *cpu) read(bus *sysBus, address uint16) byte {
 	c.clock()
-	v := bus.Read(address)
+	v := bus.read(address)
 	return v
 }
 
-func (c *CPU) readAddress(bus *SysBus, address uint16) uint16 {
+func (c *cpu) readAddress(bus *sysBus, address uint16) uint16 {
 	c.clock()
-	lo := bus.Read(address)
+	lo := bus.read(address)
 	c.clock()
-	hi := bus.Read(address + 1)
+	hi := bus.read(address + 1)
 
 	addr := uint16(hi)<<8 | uint16(lo)
 
 	return addr
 }
 
-func (c *CPU) write(bus *SysBus, address uint16, value byte) {
-	if address == OAMDMA {
+func (c *cpu) write(bus *sysBus, address uint16, value byte) {
+	if address == oamDmaAddr {
 		c.dmaTransfer(bus, value)
 		return
 	}
 
 	c.clock()
-	bus.Write(address, value)
+	bus.write(address, value)
 }
 
-func (c *CPU) dmaTransfer(bus *SysBus, address byte) {
+func (c *cpu) dmaTransfer(bus *sysBus, address byte) {
 	addr := uint16(address) << 8
 	for i := 0; i < 256; i++ {
 		c.clock()
-		v := bus.Read(addr)
+		v := bus.read(addr)
 
 		c.clock()
-		bus.Write(OAMDMA, v)
+		bus.write(oamDmaAddr, v)
 
 		addr++
 	}
 
-	if c.Cycles&1 == 1 {
+	if c.cycles&1 == 1 {
 		c.clock()
 	}
 }
 
-func (c *CPU) resolveAddress(bus *SysBus, inst Instruction) (intermediateAddr, address uint16) {
-	switch inst.Mode {
-	case Accumulator:
-		_ = c.read(bus, c.PC)
+func (c *cpu) resolveAddress(bus *sysBus, inst instruction) (intermediateAddr, address uint16) {
+	switch inst.mode {
+	case accumulator:
+		_ = c.read(bus, c.pc)
 		return 0, 0
 
-	case Implied:
-		_ = c.read(bus, c.PC)
+	case implied:
+		_ = c.read(bus, c.pc)
 		return 0, 0
 
-	case Immediate:
-		pc := c.PC
-		c.PC++
+	case immediate:
+		pc := c.pc
+		c.pc++
 		return 0, pc
 
-	case Absolute:
-		lo := c.read(bus, c.PC)
-		c.PC++
+	case absolute:
+		lo := c.read(bus, c.pc)
+		c.pc++
 
-		hi := c.read(bus, c.PC)
-		c.PC++
+		hi := c.read(bus, c.pc)
+		c.pc++
 
 		return 0, uint16(hi)<<8 | uint16(lo)
 
-	case ZeroPage:
-		addr := c.read(bus, c.PC)
-		c.PC++
+	case zeroPage:
+		addr := c.read(bus, c.pc)
+		c.pc++
 
 		return 0, uint16(addr)
 
-	case ZeroPageIndexedX:
-		addr := c.read(bus, c.PC)
-		c.PC++
+	case zeroPageIndexedX:
+		addr := c.read(bus, c.pc)
+		c.pc++
 
-		_ = c.read(bus, uint16(addr)) + c.X
+		_ = c.read(bus, uint16(addr)) + c.x
 
-		return 0, uint16(addr + c.X) //let it overflow
+		return 0, uint16(addr + c.x) //let it overflow
 
-	case ZeroPageIndexedY:
-		addr := c.read(bus, c.PC)
-		c.PC++
+	case zeroPageIndexedY:
+		addr := c.read(bus, c.pc)
+		c.pc++
 
-		_ = c.read(bus, uint16(addr)) + c.Y
+		_ = c.read(bus, uint16(addr)) + c.y
 
-		return 0, uint16(addr + c.Y) //let it overflow
+		return 0, uint16(addr + c.y) //let it overflow
 
-	case IndexedX:
-		switch inst.Kind {
-		case Read:
-			lo := c.read(bus, c.PC)
-			c.PC++
+	case indexedX:
+		switch inst.kind {
+		case read:
+			lo := c.read(bus, c.pc)
+			c.pc++
 
-			hi := c.read(bus, c.PC)
-			c.PC++
+			hi := c.read(bus, c.pc)
+			c.pc++
 
-			if (lo + c.X) < lo {
-				_ = c.read(bus, uint16(hi)<<8|uint16(lo+c.X))
+			if (lo + c.x) < lo {
+				_ = c.read(bus, uint16(hi)<<8|uint16(lo+c.x))
 			}
 
-			return 0, uint16(hi)<<8 | uint16(lo) + uint16(c.X)
+			return 0, uint16(hi)<<8 | uint16(lo) + uint16(c.x)
 
-		case ReadModWrite, Write:
-			lo := c.read(bus, c.PC)
-			c.PC++
+		case readModWrite, write:
+			lo := c.read(bus, c.pc)
+			c.pc++
 
-			hi := c.read(bus, c.PC)
-			c.PC++
+			hi := c.read(bus, c.pc)
+			c.pc++
 
-			_ = c.read(bus, uint16(hi)<<8|uint16(lo+c.X))
+			_ = c.read(bus, uint16(hi)<<8|uint16(lo+c.x))
 
-			return 0, uint16(hi)<<8 | uint16(lo) + uint16(c.X)
+			return 0, uint16(hi)<<8 | uint16(lo) + uint16(c.x)
 		}
 
-	case IndexedY:
-		switch inst.Kind {
-		case Read:
-			lo := c.read(bus, c.PC)
-			c.PC++
+	case indexedY:
+		switch inst.kind {
+		case read:
+			lo := c.read(bus, c.pc)
+			c.pc++
 
-			hi := c.read(bus, c.PC)
-			c.PC++
+			hi := c.read(bus, c.pc)
+			c.pc++
 
-			if (lo + c.Y) < lo {
-				_ = c.read(bus, uint16(hi)<<8|uint16(lo+c.Y))
+			if (lo + c.y) < lo {
+				_ = c.read(bus, uint16(hi)<<8|uint16(lo+c.y))
 			}
 
-			return 0, uint16(hi)<<8 | uint16(lo) + uint16(c.Y)
+			return 0, uint16(hi)<<8 | uint16(lo) + uint16(c.y)
 
-		case Write, ReadModWrite:
-			lo := c.read(bus, c.PC)
-			c.PC++
+		case write, readModWrite:
+			lo := c.read(bus, c.pc)
+			c.pc++
 
-			hi := c.read(bus, c.PC)
-			c.PC++
+			hi := c.read(bus, c.pc)
+			c.pc++
 
-			addr := uint16(hi)<<8 | uint16(lo) + uint16(c.Y)
+			addr := uint16(hi)<<8 | uint16(lo) + uint16(c.y)
 			_ = c.read(bus, addr)
 
 			return 0, addr
 		}
 
-	case Relative:
-		operand := c.read(bus, c.PC)
-		c.PC++
+	case relative:
+		operand := c.read(bus, c.pc)
+		c.pc++
 
-		return 0, c.PC + uint16(int8(operand))
+		return 0, c.pc + uint16(int8(operand))
 
-	case PreIndexedIndirect:
-		pointer := c.read(bus, c.PC)
-		c.PC++
+	case preIndexedIndirect:
+		pointer := c.read(bus, c.pc)
+		c.pc++
 
-		_ = c.read(bus, uint16(pointer)) + c.X
+		_ = c.read(bus, uint16(pointer)) + c.x
 
-		pointer = pointer + c.X // let it overflow
+		pointer = pointer + c.x // let it overflow
 		lo := c.read(bus, uint16(pointer))
 		hi := c.read(bus, uint16(pointer+1)) // let it overflow
 
 		return uint16(pointer), uint16(hi)<<8 | uint16(lo)
 
-	case PostIndexedIndirect:
-		switch inst.Kind {
-		case Read:
-			pointer := c.read(bus, c.PC)
-			c.PC++
+	case postIndexedIndirect:
+		switch inst.kind {
+		case read:
+			pointer := c.read(bus, c.pc)
+			c.pc++
 
 			lo := c.read(bus, uint16(pointer))
 			hi := c.read(bus, uint16(pointer+1))
 
-			if (lo + c.Y) < lo {
-				_ = c.read(bus, uint16(hi)<<8|uint16(lo+c.Y))
+			if (lo + c.y) < lo {
+				_ = c.read(bus, uint16(hi)<<8|uint16(lo+c.y))
 			}
 
 			addr := uint16(hi)<<8 | uint16(lo)
-			return addr, addr + uint16(c.Y)
+			return addr, addr + uint16(c.y)
 
-		case Write, ReadModWrite:
-			pointer := c.read(bus, c.PC)
-			c.PC++
+		case write, readModWrite:
+			pointer := c.read(bus, c.pc)
+			c.pc++
 
 			lo := c.read(bus, uint16(pointer))
 			hi := c.read(bus, uint16(pointer+1))
 
-			_ = c.read(bus, uint16(hi)<<8|uint16(lo+c.Y))
+			_ = c.read(bus, uint16(hi)<<8|uint16(lo+c.y))
 
 			addr := uint16(hi)<<8 | uint16(lo)
-			return addr, addr + uint16(c.Y)
+			return addr, addr + uint16(c.y)
 		}
 
-	case Indirect:
-		pointerlo := c.read(bus, c.PC)
-		c.PC++
+	case indirect:
+		pointerlo := c.read(bus, c.pc)
+		c.pc++
 
-		pointerhi := c.read(bus, c.PC)
-		c.PC++
+		pointerhi := c.read(bus, c.pc)
+		c.pc++
 
 		pointer := uint16(pointerhi)<<8 | uint16(pointerlo)
 		lo := c.read(bus, pointer)
@@ -569,27 +569,27 @@ func (c *CPU) resolveAddress(bus *SysBus, inst Instruction) (intermediateAddr, a
 	return 0, 0
 }
 
-func (c *CPU) handleInterrupts(bus *SysBus) {
+func (c *cpu) handleInterrupts(bus *sysBus) {
 	switch c.interrupt {
-	case NMI:
-		c.handleNMI(bus)
-		c.interrupt = None
-	case NMI_Next:
+	case nmi:
+		c.handleNmi(bus)
+		c.interrupt = none
+	case nmiNext:
 		// skip NMI now, handle it next instr
-		c.interrupt = NMI
-	case IRQ:
-		c.handleIRQ(bus)
-		c.interrupt = None
+		c.interrupt = nmi
+	case irq:
+		c.handleIrq(bus)
+		c.interrupt = none
 	}
 
 }
 
 // NMI - Non-Maskable Interrupt
-func (c *CPU) handleNMI(bus *SysBus) {
-	c.pushAddress(bus, c.PC)
-	c.push(bus, byte(c.P|Unused))
+func (c *cpu) handleNmi(bus *sysBus) {
+	c.pushAddress(bus, c.pc)
+	c.push(bus, byte(c.p|unused))
 
-	c.PC = c.readAddress(bus, NMIAddr)
+	c.pc = c.readAddress(bus, nmiAddr)
 
 	// TODO: how do these 2 cycles get spent?
 	c.clock()
@@ -597,36 +597,36 @@ func (c *CPU) handleNMI(bus *SysBus) {
 }
 
 // IRQ - IRQ Interrupt
-func (c *CPU) handleIRQ(bus *SysBus) {
-	if c.P&InterruptDisable > 0 {
+func (c *cpu) handleIrq(bus *sysBus) {
+	if c.p&interruptDisable > 0 {
 		return
 	}
 
-	c.pushAddress(bus, c.PC)
-	c.push(bus, byte(c.P|Unused))
+	c.pushAddress(bus, c.pc)
+	c.push(bus, byte(c.p|unused))
 
-	c.PC = c.readAddress(bus, IRQ_BRKAddr)
+	c.pc = c.readAddress(bus, irqBrkAddr)
 
 	// TODO: how do these 2 cycles get spent?
 	c.clock()
 	c.clock()
 
-	c.P |= InterruptDisable
+	c.p |= interruptDisable
 }
 
-func (c *CPU) push(bus *SysBus, v byte) {
-	stackLo := uint16(c.S)
+func (c *cpu) push(bus *sysBus, v byte) {
+	stackLo := uint16(c.s)
 	c.write(bus, stackHi|stackLo, v)
-	c.S--
+	c.s--
 }
 
-func (c *CPU) pull(bus *SysBus) byte {
-	c.S++
-	stackLo := uint16(c.S)
+func (c *cpu) pull(bus *sysBus) byte {
+	c.s++
+	stackLo := uint16(c.s)
 	return c.read(bus, stackHi|stackLo)
 }
 
-func (c *CPU) pushAddress(bus *SysBus, value uint16) {
+func (c *cpu) pushAddress(bus *sysBus, value uint16) {
 	hi := byte(value >> 8)
 	lo := byte(value & 0xFF)
 
@@ -634,87 +634,87 @@ func (c *CPU) pushAddress(bus *SysBus, value uint16) {
 	c.push(bus, lo)
 }
 
-func (c *CPU) pullAddress(bus *SysBus) uint16 {
+func (c *cpu) pullAddress(bus *sysBus) uint16 {
 	lo := uint16(c.pull(bus))
 	hi := uint16(c.pull(bus))
 
 	return hi<<8 | lo
 }
 
-func (c *CPU) updateZero(v byte) {
+func (c *cpu) updateZero(v byte) {
 	if v == 0 {
-		c.P |= Zero
+		c.p |= zero
 	} else {
-		c.P &^= Zero
+		c.p &^= zero
 	}
 }
 
-func (c *CPU) updateNegative(v byte) {
+func (c *cpu) updateNegative(v byte) {
 	if v&0x80 > 0 {
-		c.P |= Negative
+		c.p |= negative
 	} else {
-		c.P &^= Negative
+		c.p &^= negative
 	}
 }
 
-func (c *CPU) compare(a, b byte) {
+func (c *cpu) compare(a, b byte) {
 	if a >= b {
-		c.P |= Carry
+		c.p |= carry
 	} else {
-		c.P &^= Carry
+		c.p &^= carry
 	}
 
 	if a == b {
-		c.P |= Zero
+		c.p |= zero
 	} else {
-		c.P &^= Zero
+		c.p &^= zero
 	}
 	c.updateNegative(a - b)
 }
 
-func (c *CPU) dec(v byte) byte {
+func (c *cpu) doDec(v byte) byte {
 	r := v - 1
 	c.updateZero(r)
 	c.updateNegative(r)
 	return r
 }
 
-func (c *CPU) inc(v byte) byte {
+func (c *cpu) doInc(v byte) byte {
 	r := v + 1
 	c.updateZero(r)
 	c.updateNegative(r)
 	return r
 }
 
-func (c *CPU) add(v byte) {
-	a := uint16(c.A)
+func (c *cpu) doAdd(v byte) {
+	a := uint16(c.a)
 	b := uint16(v)
-	carry := uint16(c.P & Carry)
+	crry := uint16(c.p & carry)
 
-	result := a + b + carry
+	result := a + b + crry
 
 	if result&0x0100 > 0 {
-		c.P |= Carry
+		c.p |= carry
 	} else {
-		c.P &^= Carry
+		c.p &^= carry
 	}
 
 	if a&0x80 == b&0x80 && a&0x80 != result&0x80 {
-		c.P |= Overflow
+		c.p |= overflow
 	} else {
-		c.P &^= Overflow
+		c.p &^= overflow
 	}
 
-	c.A = byte(result)
-	c.updateZero(c.A)
-	c.updateNegative(c.A)
+	c.a = byte(result)
+	c.updateZero(c.a)
+	c.updateNegative(c.a)
 }
 
-func (c *CPU) asl(v byte) byte {
+func (c *cpu) doAsl(v byte) byte {
 	if v&0x80 > 0 {
-		c.P |= Carry
+		c.p |= carry
 	} else {
-		c.P &^= Carry
+		c.p &^= carry
 	}
 	v = v << 1
 	c.updateZero(v)
@@ -722,18 +722,18 @@ func (c *CPU) asl(v byte) byte {
 	return v
 }
 
-func (c *CPU) rol(v byte) byte {
+func (c *cpu) doRol(v byte) byte {
 	var carries bool
 	if v&0x80 > 0 {
 		carries = true
 	}
 	v = v << 1
-	v |= byte(c.P & Carry)
+	v |= byte(c.p & carry)
 
 	if carries {
-		c.P |= Carry
+		c.p |= carry
 	} else {
-		c.P &^= Carry
+		c.p &^= carry
 	}
 	c.updateZero(v)
 	c.updateNegative(v)
@@ -741,11 +741,11 @@ func (c *CPU) rol(v byte) byte {
 	return v
 }
 
-func (c *CPU) lsr(v byte) byte {
+func (c *cpu) doLsr(v byte) byte {
 	if v&1 > 0 {
-		c.P |= Carry
+		c.p |= carry
 	} else {
-		c.P &^= Carry
+		c.p &^= carry
 	}
 	v = v >> 1
 	c.updateZero(v)
@@ -753,21 +753,21 @@ func (c *CPU) lsr(v byte) byte {
 	return v
 }
 
-func (c *CPU) ror(v byte) byte {
+func (c *cpu) doRor(v byte) byte {
 	var carries bool
 	if v&1 > 0 {
 		carries = true
 	}
 
 	v = v >> 1
-	if c.P&Carry > 0 {
+	if c.p&carry > 0 {
 		v |= 0x80
 	}
 
 	if carries {
-		c.P |= Carry
+		c.p |= carry
 	} else {
-		c.P &^= Carry
+		c.p &^= carry
 	}
 	c.updateZero(v)
 	c.updateNegative(v)
@@ -775,13 +775,13 @@ func (c *CPU) ror(v byte) byte {
 	return v
 }
 
-func (c *CPU) branch(addr uint16) {
-	if c.PC&0xFF00 != addr&0xFF00 {
+func (c *cpu) branch(addr uint16) {
+	if c.pc&0xFF00 != addr&0xFF00 {
 		c.clock()
 	}
 
 	c.clock()
-	c.PC = addr
+	c.pc = addr
 }
 
 // BRK - Force Interrupt
@@ -799,16 +799,16 @@ func (c *CPU) branch(addr uint16) {
 // B	Break Command		Set to 1
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Not affected
-func (c *CPU) BRK(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.pushAddress(bus, c.PC+1)
+func (c *cpu) brk(bus *sysBus, mode addressingMode, addr uint16) {
+	c.pushAddress(bus, c.pc+1)
 
-	status := c.P
-	status |= Unused
-	status |= Break
+	status := c.p
+	status |= unused
+	status |= brk
 	c.push(bus, byte(status))
-	c.P |= InterruptDisable
+	c.p |= interruptDisable
 
-	c.PC = c.readAddress(bus, IRQ_BRKAddr)
+	c.pc = c.readAddress(bus, irqBrkAddr)
 }
 
 // NOP - No Operation
@@ -824,8 +824,8 @@ func (c *CPU) BRK(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Not affected
-func (c *CPU) NOP(bus *SysBus, mode AddressingMode, addr uint16) {
-	if mode != Implied {
+func (c *cpu) nop(bus *sysBus, mode addressingMode, addr uint16) {
+	if mode != implied {
 		c.read(bus, addr)
 	}
 }
@@ -843,8 +843,8 @@ func (c *CPU) NOP(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Not affected
-func (c *CPU) SEC(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.P |= Carry
+func (c *cpu) sec(bus *sysBus, mode addressingMode, addr uint16) {
+	c.p |= carry
 }
 
 // CLC - Clear Carry Flag
@@ -860,8 +860,8 @@ func (c *CPU) SEC(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Not affected
-func (c *CPU) CLC(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.P &^= Carry
+func (c *cpu) clc(bus *sysBus, mode addressingMode, addr uint16) {
+	c.p &^= carry
 }
 
 // SED - Set Decimal Flag
@@ -877,8 +877,8 @@ func (c *CPU) CLC(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Not affected
-func (c *CPU) SED(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.P |= Decimal
+func (c *cpu) sed(bus *sysBus, mode addressingMode, addr uint16) {
+	c.p |= decimal
 }
 
 // CLD - Clear Decimal Mode
@@ -894,8 +894,8 @@ func (c *CPU) SED(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Not affected
-func (c *CPU) CLD(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.P &^= Decimal
+func (c *cpu) cld(bus *sysBus, mode addressingMode, addr uint16) {
+	c.p &^= decimal
 }
 
 // SEI - Set Interrupt Disable
@@ -911,8 +911,8 @@ func (c *CPU) CLD(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Not affected
-func (c *CPU) SEI(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.P |= InterruptDisable
+func (c *cpu) sei(bus *sysBus, mode addressingMode, addr uint16) {
+	c.p |= interruptDisable
 }
 
 // CLI - Clear Interrupt Disable
@@ -928,8 +928,8 @@ func (c *CPU) SEI(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Not affected
-func (c *CPU) CLI(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.P &^= InterruptDisable
+func (c *cpu) cli(bus *sysBus, mode addressingMode, addr uint16) {
+	c.p &^= interruptDisable
 }
 
 // CLV - Clear Overflow Flag
@@ -945,8 +945,8 @@ func (c *CPU) CLI(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Set to 0
 // N	Negative Flag		Not affected
-func (c *CPU) CLV(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.P &^= Overflow
+func (c *cpu) clv(bus *sysBus, mode addressingMode, addr uint16) {
+	c.p &^= overflow
 }
 
 // STA - Store Accumulator
@@ -962,8 +962,8 @@ func (c *CPU) CLV(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Not affected
-func (c *CPU) STA(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.write(bus, addr, c.A)
+func (c *cpu) sta(bus *sysBus, mode addressingMode, addr uint16) {
+	c.write(bus, addr, c.a)
 }
 
 // STX - Store X Register
@@ -979,8 +979,8 @@ func (c *CPU) STA(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Not affected
-func (c *CPU) STX(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.write(bus, addr, c.X)
+func (c *cpu) stx(bus *sysBus, mode addressingMode, addr uint16) {
+	c.write(bus, addr, c.x)
 }
 
 // STY - Store Y Register
@@ -996,8 +996,8 @@ func (c *CPU) STX(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Not affected
-func (c *CPU) STY(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.write(bus, addr, c.Y)
+func (c *cpu) sty(bus *sysBus, mode addressingMode, addr uint16) {
+	c.write(bus, addr, c.y)
 }
 
 // LDA - Load Accumulator
@@ -1014,10 +1014,10 @@ func (c *CPU) STY(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Set if bit 7 of A is set
-func (c *CPU) LDA(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.A = c.read(bus, addr)
-	c.updateZero(c.A)
-	c.updateNegative(c.A)
+func (c *cpu) lda(bus *sysBus, mode addressingMode, addr uint16) {
+	c.a = c.read(bus, addr)
+	c.updateZero(c.a)
+	c.updateNegative(c.a)
 }
 
 // LDX - Load X Register
@@ -1034,10 +1034,10 @@ func (c *CPU) LDA(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Set if bit 7 of X is set
-func (c *CPU) LDX(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.X = c.read(bus, addr)
-	c.updateZero(c.X)
-	c.updateNegative(c.X)
+func (c *cpu) ldx(bus *sysBus, mode addressingMode, addr uint16) {
+	c.x = c.read(bus, addr)
+	c.updateZero(c.x)
+	c.updateNegative(c.x)
 }
 
 // LDY - Load Y Register
@@ -1054,10 +1054,10 @@ func (c *CPU) LDX(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Set if bit 7 of Y is set
-func (c *CPU) LDY(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.Y = c.read(bus, addr)
-	c.updateZero(c.Y)
-	c.updateNegative(c.Y)
+func (c *cpu) ldy(bus *sysBus, mode addressingMode, addr uint16) {
+	c.y = c.read(bus, addr)
+	c.updateZero(c.y)
+	c.updateNegative(c.y)
 }
 
 // TAX - Transfer Accumulator to X
@@ -1074,10 +1074,10 @@ func (c *CPU) LDY(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Set if bit 7 of X is set
-func (c *CPU) TAX(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.X = c.A
-	c.updateZero(c.X)
-	c.updateNegative(c.X)
+func (c *cpu) tax(bus *sysBus, mode addressingMode, addr uint16) {
+	c.x = c.a
+	c.updateZero(c.x)
+	c.updateNegative(c.x)
 }
 
 // TAY - Transfer Accumulator to Y
@@ -1094,10 +1094,10 @@ func (c *CPU) TAX(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Set if bit 7 of Y is set
-func (c *CPU) TAY(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.Y = c.A
-	c.updateZero(c.Y)
-	c.updateNegative(c.Y)
+func (c *cpu) tay(bus *sysBus, mode addressingMode, addr uint16) {
+	c.y = c.a
+	c.updateZero(c.y)
+	c.updateNegative(c.y)
 }
 
 // TSX - Transfer Stack Pointer to X
@@ -1114,10 +1114,10 @@ func (c *CPU) TAY(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Set if bit 7 of X is set
-func (c *CPU) TSX(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.X = c.S
-	c.updateZero(c.X)
-	c.updateNegative(c.X)
+func (c *cpu) tsx(bus *sysBus, mode addressingMode, addr uint16) {
+	c.x = c.s
+	c.updateZero(c.x)
+	c.updateNegative(c.x)
 }
 
 // TXA - Transfer X to Accumulator
@@ -1134,10 +1134,10 @@ func (c *CPU) TSX(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Set if bit 7 of A is set
-func (c *CPU) TXA(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.A = c.X
-	c.updateZero(c.A)
-	c.updateNegative(c.A)
+func (c *cpu) txa(bus *sysBus, mode addressingMode, addr uint16) {
+	c.a = c.x
+	c.updateZero(c.a)
+	c.updateNegative(c.a)
 }
 
 // TXS - Transfer X to Stack Pointer
@@ -1153,8 +1153,8 @@ func (c *CPU) TXA(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Not affected
-func (c *CPU) TXS(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.S = c.X
+func (c *cpu) txs(bus *sysBus, mode addressingMode, addr uint16) {
+	c.s = c.x
 }
 
 // TYA - Transfer Y to Accumulator
@@ -1171,10 +1171,10 @@ func (c *CPU) TXS(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Set if bit 7 of A is set
-func (c *CPU) TYA(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.A = c.Y
-	c.updateZero(c.A)
-	c.updateNegative(c.A)
+func (c *cpu) tya(bus *sysBus, mode addressingMode, addr uint16) {
+	c.a = c.y
+	c.updateZero(c.a)
+	c.updateNegative(c.a)
 }
 
 // PHA - Push Accumulator
@@ -1189,8 +1189,8 @@ func (c *CPU) TYA(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Not affected
-func (c *CPU) PHA(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.push(bus, c.A)
+func (c *cpu) pha(bus *sysBus, mode addressingMode, addr uint16) {
+	c.push(bus, c.a)
 }
 
 // PHP - Push Processor Status
@@ -1205,10 +1205,10 @@ func (c *CPU) PHA(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Not affected
-func (c *CPU) PHP(bus *SysBus, mode AddressingMode, addr uint16) {
-	status := c.P
-	status |= Break
-	status |= Unused
+func (c *cpu) php(bus *sysBus, mode addressingMode, addr uint16) {
+	status := c.p
+	status |= brk
+	status |= unused
 	c.push(bus, byte(status))
 }
 
@@ -1225,14 +1225,14 @@ func (c *CPU) PHP(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Set if bit 7 of A is set
-func (c *CPU) PLA(bus *SysBus, mode AddressingMode, addr uint16) {
+func (c *cpu) pla(bus *sysBus, mode addressingMode, addr uint16) {
 	// TODO: this cycle should be spent in pull. read the docs
 	c.clock()
 	a := c.pull(bus)
 
-	c.A = a
-	c.updateZero(c.A)
-	c.updateNegative(c.A)
+	c.a = a
+	c.updateZero(c.a)
+	c.updateNegative(c.a)
 }
 
 // PLP - Pull Processor Status
@@ -1248,15 +1248,15 @@ func (c *CPU) PLA(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command	Set from stack
 // V	Overflow Flag	Set from stack
 // N	Negative Flag	Set from stack
-func (c *CPU) PLP(bus *SysBus, mode AddressingMode, addr uint16) {
+func (c *cpu) plp(bus *sysBus, mode addressingMode, addr uint16) {
 
 	// TODO: this cycle should be spent in pull. read the docs
 	c.clock()
 	p := c.pull(bus)
 
-	c.P = Status(p)
-	c.P &^= Break //TODO figure out if we can just turn it off instead of actually ignoring
-	c.P |= Unused
+	c.p = status(p)
+	c.p &^= brk //TODO figure out if we can just turn it off instead of actually ignoring
+	c.p |= unused
 }
 
 // DEC - Decrement Memory
@@ -1273,10 +1273,10 @@ func (c *CPU) PLP(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Set if bit 7 of the result is set
-func (c *CPU) DEC(bus *SysBus, mode AddressingMode, addr uint16) {
+func (c *cpu) dec(bus *sysBus, mode addressingMode, addr uint16) {
 	v := c.read(bus, addr)
 	c.write(bus, addr, v)
-	c.write(bus, addr, c.dec(v))
+	c.write(bus, addr, c.doDec(v))
 }
 
 // DEX - Decrement X Register
@@ -1293,8 +1293,8 @@ func (c *CPU) DEC(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Set if bit 7 of X is set
-func (c *CPU) DEX(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.X = c.dec(c.X)
+func (c *cpu) dex(bus *sysBus, mode addressingMode, addr uint16) {
+	c.x = c.doDec(c.x)
 }
 
 // DEY - Decrement Y Register
@@ -1311,8 +1311,8 @@ func (c *CPU) DEX(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Set if bit 7 of Y is set
-func (c *CPU) DEY(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.Y = c.dec(c.Y)
+func (c *cpu) dey(bus *sysBus, mode addressingMode, addr uint16) {
+	c.y = c.doDec(c.y)
 }
 
 // INC - Increment Memory
@@ -1329,10 +1329,10 @@ func (c *CPU) DEY(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Set if bit 7 of the result is set
-func (c *CPU) INC(bus *SysBus, mode AddressingMode, addr uint16) {
+func (c *cpu) inc(bus *sysBus, mode addressingMode, addr uint16) {
 	v := c.read(bus, addr)
 	c.write(bus, addr, v)
-	c.write(bus, addr, c.inc(v))
+	c.write(bus, addr, c.doInc(v))
 }
 
 // INX - Increment X Register
@@ -1349,8 +1349,8 @@ func (c *CPU) INC(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Set if bit 7 of X is set
-func (c *CPU) INX(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.X = c.inc(c.X)
+func (c *cpu) inx(bus *sysBus, mode addressingMode, addr uint16) {
+	c.x = c.doInc(c.x)
 }
 
 // INY - Increment Y Register
@@ -1367,8 +1367,8 @@ func (c *CPU) INX(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Set if bit 7 of Y is set
-func (c *CPU) INY(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.Y = c.inc(c.Y)
+func (c *cpu) iny(bus *sysBus, mode addressingMode, addr uint16) {
+	c.y = c.doInc(c.y)
 }
 
 // ADC - Add with Carry
@@ -1386,8 +1386,8 @@ func (c *CPU) INY(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Set if sign bit is incorrect
 // N	Negative Flag		Set if bit 7 set
-func (c *CPU) ADC(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.add(c.read(bus, addr))
+func (c *cpu) adc(bus *sysBus, mode addressingMode, addr uint16) {
+	c.doAdd(c.read(bus, addr))
 }
 
 // SBC - Subtract with Carry
@@ -1405,8 +1405,8 @@ func (c *CPU) ADC(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Set if sign bit is incorrect
 // N	Negative Flag		Set if bit 7 set
-func (c *CPU) SBC(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.add(c.read(bus, addr) ^ 0xFF)
+func (c *cpu) sbc(bus *sysBus, mode addressingMode, addr uint16) {
+	c.doAdd(c.read(bus, addr) ^ 0xFF)
 }
 
 // ASL - Arithmetic Shift Left
@@ -1426,15 +1426,15 @@ func (c *CPU) SBC(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Set if bit 7 of the result is set
-func (c *CPU) ASL(bus *SysBus, mode AddressingMode, addr uint16) {
-	if mode == Accumulator {
-		c.A = c.asl(c.A)
+func (c *cpu) asl(bus *sysBus, mode addressingMode, addr uint16) {
+	if mode == accumulator {
+		c.a = c.doAsl(c.a)
 		return
 	}
 
 	v := c.read(bus, addr)
 	c.write(bus, addr, v)
-	c.write(bus, addr, c.asl(v))
+	c.write(bus, addr, c.doAsl(v))
 }
 
 // AND - Logical AND
@@ -1451,10 +1451,10 @@ func (c *CPU) ASL(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Set if bit 7 set
-func (c *CPU) AND(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.A &= c.read(bus, addr)
-	c.updateZero(c.A)
-	c.updateNegative(c.A)
+func (c *cpu) and(bus *sysBus, mode addressingMode, addr uint16) {
+	c.a &= c.read(bus, addr)
+	c.updateZero(c.a)
+	c.updateNegative(c.a)
 }
 
 // EOR - Exclusive OR
@@ -1471,10 +1471,10 @@ func (c *CPU) AND(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Set if bit 7 set
-func (c *CPU) EOR(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.A ^= c.read(bus, addr)
-	c.updateZero(c.A)
-	c.updateNegative(c.A)
+func (c *cpu) eor(bus *sysBus, mode addressingMode, addr uint16) {
+	c.a ^= c.read(bus, addr)
+	c.updateZero(c.a)
+	c.updateNegative(c.a)
 }
 
 // LSR - Logical Shift Right
@@ -1491,15 +1491,15 @@ func (c *CPU) EOR(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Set if bit 7 of the result is set
-func (c *CPU) LSR(bus *SysBus, mode AddressingMode, addr uint16) {
-	if mode == Accumulator {
-		c.A = c.lsr(c.A)
+func (c *cpu) lsr(bus *sysBus, mode addressingMode, addr uint16) {
+	if mode == accumulator {
+		c.a = c.doLsr(c.a)
 		return
 	}
 
 	v := c.read(bus, addr)
 	c.write(bus, addr, v)
-	c.write(bus, addr, c.lsr(v))
+	c.write(bus, addr, c.doLsr(v))
 }
 
 // ROL - Rotate Left
@@ -1516,15 +1516,15 @@ func (c *CPU) LSR(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Set if bit 7 of the result is set
-func (c *CPU) ROL(bus *SysBus, mode AddressingMode, addr uint16) {
-	if mode == Accumulator {
-		c.A = c.rol(c.A)
+func (c *cpu) rol(bus *sysBus, mode addressingMode, addr uint16) {
+	if mode == accumulator {
+		c.a = c.doRol(c.a)
 		return
 	}
 
 	v := c.read(bus, addr)
 	c.write(bus, addr, v)
-	c.write(bus, addr, c.rol(v))
+	c.write(bus, addr, c.doRol(v))
 }
 
 // ROR - Rotate Right
@@ -1541,15 +1541,15 @@ func (c *CPU) ROL(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Set if bit 7 of the result is set
-func (c *CPU) ROR(bus *SysBus, mode AddressingMode, addr uint16) {
-	if mode == Accumulator {
-		c.A = c.ror(c.A)
+func (c *cpu) ror(bus *sysBus, mode addressingMode, addr uint16) {
+	if mode == accumulator {
+		c.a = c.doRor(c.a)
 		return
 	}
 
 	v := c.read(bus, addr)
 	c.write(bus, addr, v)
-	c.write(bus, addr, c.ror(v))
+	c.write(bus, addr, c.doRor(v))
 }
 
 // ORA - Logical Inclusive OR
@@ -1566,10 +1566,10 @@ func (c *CPU) ROR(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Set if bit 7 set
-func (c *CPU) ORA(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.A |= c.read(bus, addr)
-	c.updateZero(c.A)
-	c.updateNegative(c.A)
+func (c *cpu) ora(bus *sysBus, mode addressingMode, addr uint16) {
+	c.a |= c.read(bus, addr)
+	c.updateZero(c.a)
+	c.updateNegative(c.a)
 }
 
 // BIT - Bit Test
@@ -1588,16 +1588,16 @@ func (c *CPU) ORA(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Set to bit 6 of the memory value
 // N	Negative Flag		Set to bit 7 of the memory value
-func (c *CPU) BIT(bus *SysBus, mode AddressingMode, addr uint16) {
+func (c *cpu) bit(bus *sysBus, mode addressingMode, addr uint16) {
 	v := c.read(bus, addr)
 
 	c.updateNegative(v)
-	c.updateZero(c.A & v)
+	c.updateZero(c.a & v)
 
 	if v&0x40 > 0 {
-		c.P |= Overflow
+		c.p |= overflow
 	} else {
-		c.P &^= Overflow
+		c.p &^= overflow
 	}
 }
 
@@ -1615,8 +1615,8 @@ func (c *CPU) BIT(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Set if bit 7 of the result is set
-func (c *CPU) CMP(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.compare(c.A, c.read(bus, addr))
+func (c *cpu) cmp(bus *sysBus, mode addressingMode, addr uint16) {
+	c.compare(c.a, c.read(bus, addr))
 }
 
 // CPX - Compare X Register
@@ -1633,8 +1633,8 @@ func (c *CPU) CMP(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Set if bit 7 of the result is set
-func (c *CPU) CPX(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.compare(c.X, c.read(bus, addr))
+func (c *cpu) cpx(bus *sysBus, mode addressingMode, addr uint16) {
+	c.compare(c.x, c.read(bus, addr))
 }
 
 // CPY - Compare Y Register
@@ -1651,8 +1651,8 @@ func (c *CPU) CPX(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Set if bit 7 of the result is set
-func (c *CPU) CPY(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.compare(c.Y, c.read(bus, addr))
+func (c *cpu) cpy(bus *sysBus, mode addressingMode, addr uint16) {
+	c.compare(c.y, c.read(bus, addr))
 }
 
 // BCC - Branch if Carry Clear
@@ -1668,8 +1668,8 @@ func (c *CPU) CPY(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Not affected
-func (c *CPU) BCC(bus *SysBus, mode AddressingMode, addr uint16) {
-	if c.P&Carry > 0 {
+func (c *cpu) bcc(bus *sysBus, mode addressingMode, addr uint16) {
+	if c.p&carry > 0 {
 		return
 	}
 
@@ -1689,8 +1689,8 @@ func (c *CPU) BCC(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Not affected
-func (c *CPU) BCS(bus *SysBus, mode AddressingMode, addr uint16) {
-	if c.P&Carry == 0 {
+func (c *cpu) bcs(bus *sysBus, mode addressingMode, addr uint16) {
+	if c.p&carry == 0 {
 		return
 	}
 
@@ -1710,8 +1710,8 @@ func (c *CPU) BCS(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Not affected
-func (c *CPU) BVC(bus *SysBus, mode AddressingMode, addr uint16) {
-	if c.P&Overflow > 0 {
+func (c *cpu) bvc(bus *sysBus, mode addressingMode, addr uint16) {
+	if c.p&overflow > 0 {
 		return
 	}
 
@@ -1731,8 +1731,8 @@ func (c *CPU) BVC(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Not affected
-func (c *CPU) BVS(bus *SysBus, mode AddressingMode, addr uint16) {
-	if c.P&Overflow == 0 {
+func (c *cpu) bvs(bus *sysBus, mode addressingMode, addr uint16) {
+	if c.p&overflow == 0 {
 		return
 	}
 
@@ -1752,8 +1752,8 @@ func (c *CPU) BVS(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Not affected
-func (c *CPU) BEQ(bus *SysBus, mode AddressingMode, addr uint16) {
-	if c.P&Zero == 0 {
+func (c *cpu) beq(bus *sysBus, mode addressingMode, addr uint16) {
+	if c.p&zero == 0 {
 		return
 	}
 
@@ -1773,8 +1773,8 @@ func (c *CPU) BEQ(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Not affected
-func (c *CPU) BNE(bus *SysBus, mode AddressingMode, addr uint16) {
-	if c.P&Zero > 0 {
+func (c *cpu) bne(bus *sysBus, mode addressingMode, addr uint16) {
+	if c.p&zero > 0 {
 		return
 	}
 
@@ -1794,8 +1794,8 @@ func (c *CPU) BNE(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Not affected
-func (c *CPU) BMI(bus *SysBus, mode AddressingMode, addr uint16) {
-	if c.P&Negative == 0 {
+func (c *cpu) bmi(bus *sysBus, mode addressingMode, addr uint16) {
+	if c.p&negative == 0 {
 		return
 	}
 
@@ -1815,8 +1815,8 @@ func (c *CPU) BMI(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Not affected
-func (c *CPU) BPL(bus *SysBus, mode AddressingMode, addr uint16) {
-	if c.P&Negative > 0 {
+func (c *cpu) bpl(bus *sysBus, mode addressingMode, addr uint16) {
+	if c.p&negative > 0 {
 		return
 	}
 
@@ -1835,8 +1835,8 @@ func (c *CPU) BPL(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Not affected
-func (c *CPU) JMP(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.PC = addr
+func (c *cpu) jmp(bus *sysBus, mode addressingMode, addr uint16) {
+	c.pc = addr
 }
 
 // JSR - Jump to Subroutine
@@ -1852,11 +1852,11 @@ func (c *CPU) JMP(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Not affected
-func (c *CPU) JSR(bus *SysBus, mode AddressingMode, addr uint16) {
+func (c *cpu) jsr(bus *sysBus, mode addressingMode, addr uint16) {
 	c.clock()
 
-	c.pushAddress(bus, c.PC-1)
-	c.PC = addr
+	c.pushAddress(bus, c.pc-1)
+	c.pc = addr
 }
 
 // RTI - Return from Interrupt
@@ -1872,16 +1872,16 @@ func (c *CPU) JSR(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Set from stack
 // V	Overflow Flag		Set from stack
 // N	Negative Flag		Set from stack
-func (c *CPU) RTI(bus *SysBus, mode AddressingMode, addr uint16) {
+func (c *cpu) rti(bus *sysBus, mode addressingMode, addr uint16) {
 	// TODO: this cycle should be spent in pull. read the docs
 	c.clock()
 
 	p := c.pull(bus)
 
-	c.P = Status(p) & ^Break
-	c.P |= Unused
+	c.p = status(p) & ^brk
+	c.p |= unused
 
-	c.PC = c.pullAddress(bus)
+	c.pc = c.pullAddress(bus)
 }
 
 // RTS - Return from Subroutine
@@ -1897,7 +1897,7 @@ func (c *CPU) RTI(bus *SysBus, mode AddressingMode, addr uint16) {
 // B	Break Command		Not affected
 // V	Overflow Flag		Not affected
 // N	Negative Flag		Not affected
-func (c *CPU) RTS(bus *SysBus, mode AddressingMode, addr uint16) {
+func (c *cpu) rts(bus *sysBus, mode addressingMode, addr uint16) {
 	// TODO: this cycle should be spent in pull. read the docs
 	c.clock()
 
@@ -1905,7 +1905,7 @@ func (c *CPU) RTS(bus *SysBus, mode AddressingMode, addr uint16) {
 	pchi := uint16(c.pull(bus))
 
 	c.clock()
-	c.PC = pchi<<8 | pclo + 1
+	c.pc = pchi<<8 | pclo + 1
 }
 
 // ====================================================================================================================================
@@ -1944,21 +1944,21 @@ func (c *CPU) RTS(bus *SysBus, mode AddressingMode, addr uint16) {
 // follow this out of confusion with the mnemonic for a pseudoinstruction that
 // combines CMP #$80 (or ANC #$FF) then ROR. Note that ALR #$FE acts like LSR
 // followed by CLC.
-func (c *CPU) ALR(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.AND(bus, mode, addr)
-	c.LSR(bus, Accumulator, addr)
+func (c *cpu) alr(bus *sysBus, mode addressingMode, addr uint16) {
+	c.and(bus, mode, addr)
+	c.lsr(bus, accumulator, addr)
 }
 
 // Does AND #i, setting N and Z flags based on the result. Then it copies N
 // (bit 7) to C. ANC #$FF could be useful for sign-extending, much like
 // CMP #$80. ANC #$00 acts like LDA #$00 followed by CLC.
-func (c *CPU) ANC(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.AND(bus, mode, addr)
+func (c *cpu) anc(bus *sysBus, mode addressingMode, addr uint16) {
+	c.and(bus, mode, addr)
 
-	if c.P&Negative > 0 {
-		c.P |= Carry
+	if c.p&negative > 0 {
+		c.p |= carry
 	} else {
-		c.P &^= Carry
+		c.p &^= carry
 	}
 }
 
@@ -1966,20 +1966,20 @@ func (c *CPU) ANC(bus *SysBus, mode AddressingMode, addr uint16) {
 // normal, but C is bit 6 and V is bit 6 xor bit 5. A fast way to perform signed
 // division by 4 is: CMP #$80; ARR #$FF; ROR. This can be extended to larger
 // powers of two.
-func (c *CPU) ARR(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.AND(bus, mode, addr)
-	c.ROR(bus, Accumulator, addr)
+func (c *cpu) arr(bus *sysBus, mode addressingMode, addr uint16) {
+	c.and(bus, mode, addr)
+	c.ror(bus, accumulator, addr)
 
-	if (c.A>>6)&1 > 0 {
-		c.P |= Carry
+	if (c.a>>6)&1 > 0 {
+		c.p |= carry
 	} else {
-		c.P &^= Carry
+		c.p &^= carry
 	}
 
-	if ((c.A>>6)&1)^((c.A>>5)&1) > 0 {
-		c.P |= Overflow
+	if ((c.a>>6)&1)^((c.a>>5)&1) > 0 {
+		c.p |= overflow
 	} else {
-		c.P &^= Overflow
+		c.p &^= overflow
 	}
 }
 
@@ -1989,7 +1989,7 @@ func (c *CPU) ARR(bus *SysBus, mode AddressingMode, addr uint16) {
 // structure of arrays. For example, TXA AXS #$FC could step to the next OAM
 // entry or to the next APU channel, saving one byte and four cycles over four
 // INXs. Also called SBX.
-func (c *CPU) AXS(bus *SysBus, mode AddressingMode, addr uint16) {
+func (c *cpu) axs(bus *sysBus, mode addressingMode, addr uint16) {
 	panic("AXS wat") //SBC without carry void asx()
 }
 
@@ -1997,119 +1997,119 @@ func (c *CPU) AXS(bus *SysBus, mode AddressingMode, addr uint16) {
 // of the X register with the (d),Y addressing mode. Notice that the immediate
 // is missing; the opcode that would have been LAX is affected by line noise on
 // the data bus. MOS 6502: even the bugs have bugs.
-func (c *CPU) LAX(bus *SysBus, mode AddressingMode, addr uint16) {
-	if mode == Immediate {
+func (c *cpu) lax(bus *sysBus, mode addressingMode, addr uint16) {
+	if mode == immediate {
 		panic("LAX Immediate")
 	}
 
-	c.LDA(bus, mode, addr)
-	c.TAX(bus, mode, addr)
+	c.lda(bus, mode, addr)
+	c.tax(bus, mode, addr)
 }
 
 // Stores the bitwise AND of A and X. As with STA and STX, no flags are affected
-func (c *CPU) SAX(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.write(bus, addr, c.A&c.X)
+func (c *cpu) sax(bus *sysBus, mode addressingMode, addr uint16) {
+	c.write(bus, addr, c.a&c.x)
 }
 
 // Equivalent to DEC value then CMP value, except supporting more addressing
 // modes. LDA #$FF followed by DCP can be used to check if the decrement
 // underflows, which is useful for multi-byte decrements.
-func (c *CPU) DCP(bus *SysBus, mode AddressingMode, addr uint16) {
+func (c *cpu) dcp(bus *sysBus, mode addressingMode, addr uint16) {
 	v := c.read(bus, addr)
 	c.write(bus, addr, v)
 
-	v = c.dec(v)
+	v = c.doDec(v)
 	c.write(bus, addr, v)
-	c.compare(c.A, v)
+	c.compare(c.a, v)
 }
 
 // Equivalent to INC value then SBC value, except supporting more addressing
 // modes.
-func (c *CPU) ISC(bus *SysBus, mode AddressingMode, addr uint16) {
+func (c *cpu) isc(bus *sysBus, mode addressingMode, addr uint16) {
 	v := c.read(bus, addr)
 	c.write(bus, addr, v)
 
-	v = c.inc(v)
+	v = c.doInc(v)
 	c.write(bus, addr, v)
-	c.add(v ^ 0xFF)
+	c.doAdd(v ^ 0xFF)
 }
 
 // Equivalent to ROL value then AND value, except supporting more addressing
 // modes. LDA #$FF followed by RLA is an efficient way to rotate a variable
 // while also loading it in A.
-func (c *CPU) RLA(bus *SysBus, mode AddressingMode, addr uint16) {
+func (c *cpu) rla(bus *sysBus, mode addressingMode, addr uint16) {
 	v := c.read(bus, addr)
 	c.write(bus, addr, v)
 
-	v = c.rol(v)
+	v = c.doRol(v)
 	c.write(bus, addr, v)
 
-	c.A &= v
-	c.updateZero(c.A)
-	c.updateNegative(c.A)
+	c.a &= v
+	c.updateZero(c.a)
+	c.updateNegative(c.a)
 }
 
 // Equivalent to ROR value then ADC value, except supporting more addressing
 // modes. Essentially this computes A + value / 2, where value is 9-bit and the
 // division is rounded up.
-func (c *CPU) RRA(bus *SysBus, mode AddressingMode, addr uint16) {
+func (c *cpu) rra(bus *sysBus, mode addressingMode, addr uint16) {
 	v := c.read(bus, addr)
 	c.write(bus, addr, v)
 
-	v = c.ror(v)
+	v = c.doRor(v)
 	c.write(bus, addr, v)
-	c.add(v)
+	c.doAdd(v)
 }
 
 // Equivalent to ASL value then ORA value, except supporting more addressing
 // modes. LDA #0 followed by SLO is an efficient way to shift a variable while
 // also loading it in A.
-func (c *CPU) SLO(bus *SysBus, mode AddressingMode, addr uint16) {
+func (c *cpu) slo(bus *sysBus, mode addressingMode, addr uint16) {
 	v := c.read(bus, addr)
 	c.write(bus, addr, v)
 
-	v = c.asl(v)
+	v = c.doAsl(v)
 	c.write(bus, addr, v)
 
-	c.A |= v
-	c.updateZero(c.A)
-	c.updateNegative(c.A)
+	c.a |= v
+	c.updateZero(c.a)
+	c.updateNegative(c.a)
 }
 
 // Equivalent to LSR value then EOR value, except supporting more addressing
 // modes. LDA #0 followed by SRE is an efficient way to shift a variable while
 // also loading it in A.
-func (c *CPU) SRE(bus *SysBus, mode AddressingMode, addr uint16) {
+func (c *cpu) sre(bus *sysBus, mode addressingMode, addr uint16) {
 	v := c.read(bus, addr)
 	c.write(bus, addr, v)
 
-	v = c.lsr(v)
+	v = c.doLsr(v)
 	c.write(bus, addr, v)
 
-	c.A ^= v
-	c.updateZero(c.A)
-	c.updateNegative(c.A)
+	c.a ^= v
+	c.updateZero(c.a)
+	c.updateNegative(c.a)
 }
 
-func (c *CPU) KIL(bus *SysBus, mode AddressingMode, addr uint16) {
+func (c *cpu) kil(bus *sysBus, mode addressingMode, addr uint16) {
 	panic("KIL NOT IMPLEMENTED")
 }
-func (c *CPU) XAA(bus *SysBus, mode AddressingMode, addr uint16) {
-	c.TXA(bus, mode, addr)
-	c.AND(bus, mode, addr)
+func (c *cpu) xaa(bus *sysBus, mode addressingMode, addr uint16) {
+	c.txa(bus, mode, addr)
+	c.and(bus, mode, addr)
 }
-func (c *CPU) AHX(bus *SysBus, mode AddressingMode, addr uint16) {
+func (c *cpu) ahx(bus *sysBus, mode addressingMode, addr uint16) {
 	panic("AHX NOT IMPLEMENTED")
 }
-func (c *CPU) TAS(bus *SysBus, mode AddressingMode, addr uint16) {
+func (c *cpu) tas(bus *sysBus, mode addressingMode, addr uint16) {
 	panic("TAS NOT IMPLEMENTED")
 }
-func (c *CPU) SHY(bus *SysBus, mode AddressingMode, addr uint16) {
+func (c *cpu) shy(bus *sysBus, mode addressingMode, addr uint16) {
 	panic("SHY NOT IMPLEMENTED")
 }
-func (c *CPU) SHX(bus *SysBus, mode AddressingMode, addr uint16) {
+func (c *cpu) shx(bus *sysBus, mode addressingMode, addr uint16) {
 	panic("SHX NOT IMPLEMENTED")
 }
-func (c *CPU) LAS(bus *SysBus, mode AddressingMode, addr uint16) {
+func (c *cpu) las(bus *sysBus, mode addressingMode, addr uint16) {
 	panic("LAS NOT IMPLEMENTED")
 }

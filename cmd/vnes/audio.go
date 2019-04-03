@@ -12,33 +12,31 @@ import (
 type audioEngine struct {
 	AudioChan <-chan float32
 
-	freeFuncs    []func() error
 	envelope     *envelope
 	streamParams portaudio.StreamParameters
 	stream       *portaudio.Stream
-	lastSample   float32
-}
-
-func (a *audioEngine) deferFn(fn func() error) {
-	a.freeFuncs = append(a.freeFuncs, fn)
 }
 
 func (a *audioEngine) quit() error {
 	a.envelope.close()
 
-	var errorList errors.List
-	for i := len(a.freeFuncs) - 1; i >= 0; i-- {
-		errorList = errorList.Add(a.freeFuncs[i]())
+	err := errors.NewList(
+		a.stream.Stop(),
+		a.stream.Close(),
+		portaudio.Terminate(),
+	)
+
+	if err != nil {
+		return fmt.Errorf("audioEngine.quit: %s", err)
 	}
 
-	return errorList.Errorf("audioEngine.quit: %s", errorList)
+	return nil
 }
 
 func (a *audioEngine) init(lowLatency bool) error {
 	if err := portaudio.Initialize(); err != nil {
 		return fmt.Errorf("audioEngine.init: unable to initialize portaudio: %s", err)
 	}
-	a.deferFn(portaudio.Terminate)
 
 	host, err := portaudio.DefaultHostApi()
 	if err != nil {
@@ -54,14 +52,13 @@ func (a *audioEngine) init(lowLatency bool) error {
 	a.streamParams.SampleRate = 48000
 	a.streamParams.FramesPerBuffer = 2048
 
-	a.envelope = newEnvelope(float32(a.streamParams.SampleRate/2.0), float32(a.streamParams.SampleRate/2.0))
+	a.envelope = newEnvelope(float32(a.streamParams.SampleRate))
 
 	stream, err := portaudio.OpenStream(a.streamParams, a.audioCallback)
 	if err != nil {
 		return fmt.Errorf("audioEngine.init: unable to open stream: %s", err)
 	}
 	a.stream = stream
-	a.deferFn(a.stream.Close)
 
 	return nil
 }
@@ -106,14 +103,12 @@ const (
 type envelope struct {
 	state      int32
 	attackRate float32
-	decayRate  float32
 	step       float32
 }
 
-func newEnvelope(attackDurSamples, decayDurSamples float32) *envelope {
+func newEnvelope(durSamples float32) *envelope {
 	return &envelope{
-		attackRate: 1.0 / attackDurSamples,
-		decayRate:  1.0 / decayDurSamples,
+		attackRate: 1.0 / durSamples,
 	}
 }
 
@@ -121,18 +116,16 @@ func (e *envelope) gain() float32 {
 	s := atomic.LoadInt32(&e.state)
 	switch s {
 	case envOpen:
-		e.step = e.step + e.attackRate
+		e.step += e.attackRate
 		if e.step >= 1.0 {
 			e.step = 1.0
 			atomic.StoreInt32(&e.state, envSustain)
 		}
 	case envClose:
-		e.step = e.step - e.decayRate
-		if e.step <= 0.01 {
-			e.step = 0.0
-			atomic.StoreInt32(&e.state, envSustain)
-		}
+		e.step = 0.0
+		atomic.StoreInt32(&e.state, envSustain)
 	}
+
 	return e.step
 }
 

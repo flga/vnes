@@ -31,10 +31,16 @@ func newNametableView(scale int, fontCache gui.FontMap) (*nametableView, error) 
 func (v *nametableView) Init(engine *engine, console *nes.Console) error {
 	v.gridList = gui.GridList{
 		List: []*gui.Grid{
-			&gui.Grid{Rows: 60, Cols: 64, Color: white64, UpdateFn: func(g *gui.Grid) { g.Bounds = *v.Rect }},
-			&gui.Grid{Rows: 8, Cols: 16, Square: true, Color: white128, UpdateFn: func(g *gui.Grid) { g.Bounds = sdl.Rect{W: v.Rect.W, H: v.Rect.H / 2, X: v.Rect.X, Y: v.Rect.Y} }},
-			&gui.Grid{Rows: 8, Cols: 16, Square: true, Color: white128, UpdateFn: func(g *gui.Grid) { g.Bounds = sdl.Rect{W: v.Rect.W, H: v.Rect.H / 2, X: v.Rect.X, Y: v.Rect.H / 2} }},
-			&gui.Grid{Rows: 2, Cols: 2, Borders: true, Color: white, UpdateFn: func(g *gui.Grid) { g.Bounds = *v.Rect }},
+			&gui.Grid{Rows: 60, Cols: 64, Color: white64, UpdateFn: func(g *gui.Grid) { g.Bounds = v.Rect() }},
+			&gui.Grid{Rows: 8, Cols: 16, Square: true, Color: white128, UpdateFn: func(g *gui.Grid) {
+				rect := v.Rect()
+				g.Bounds = sdl.Rect{W: rect.W, H: rect.H / 2, X: rect.X, Y: rect.Y}
+			}},
+			&gui.Grid{Rows: 8, Cols: 16, Square: true, Color: white128, UpdateFn: func(g *gui.Grid) {
+				rect := v.Rect()
+				g.Bounds = sdl.Rect{W: rect.W, H: rect.H / 2, X: rect.X, Y: rect.H / 2}
+			}},
+			&gui.Grid{Rows: 2, Cols: 2, Borders: true, Color: white, UpdateFn: func(g *gui.Grid) { g.Bounds = v.Rect() }},
 		},
 	}
 
@@ -43,16 +49,20 @@ func (v *nametableView) Init(engine *engine, console *nes.Console) error {
 			if len(r.RGBA8888) < 256*240*4*4 {
 				r.RGBA8888 = make([]byte, 256*240*4*4)
 			}
-			console.PPU.DrawNametables(r.RGBA8888)
+			console.DrawNametables(r.RGBA8888)
 		},
 	}
 
 	return nil
 }
 
-func (v *nametableView) Handle(event sdl.Event, console *nes.Console) (handled bool, err error) {
-	if handled, err := v.View.Handle(event, console); handled || err != nil {
+func (v *nametableView) Handle(event sdl.Event, engine *engine, console *nes.Console) (handled bool, err error) {
+	if handled, err := v.View.Handle(event); handled || err != nil {
 		return handled, err
+	}
+
+	if !v.Focused() {
+		return false, nil
 	}
 
 	switch evt := event.(type) {
@@ -61,6 +71,8 @@ func (v *nametableView) Handle(event sdl.Event, console *nes.Console) (handled b
 			v.gridList.Toggle()
 			return true, nil
 		}
+	case *sdl.ControllerButtonEvent:
+		fmt.Println("ctrl nametable", v.Focused())
 	}
 
 	return false, nil

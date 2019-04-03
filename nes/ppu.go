@@ -104,15 +104,15 @@ var palette [64]color.RGBA = [64]color.RGBA{
 }
 
 const (
-	PPUCTRL   uint16 = 0x2000
-	PPUMASK   uint16 = 0x2001
-	PPUSTATUS uint16 = 0x2002
-	OAMADDR   uint16 = 0x2003
-	OAMDATA   uint16 = 0x2004
-	PPUSCROLL uint16 = 0x2005
-	PPUADDR   uint16 = 0x2006
-	PPUDATA   uint16 = 0x2007
-	OAMDMA    uint16 = 0x4014
+	ppuCtrlAddr   uint16 = 0x2000
+	ppuMaskAddr   uint16 = 0x2001
+	ppuStatusAddr uint16 = 0x2002
+	oamAddrAddr   uint16 = 0x2003
+	oamDataAddr   uint16 = 0x2004
+	ppuScrollAddr uint16 = 0x2005
+	ppuAddrAddr   uint16 = 0x2006
+	ppuDataAddr   uint16 = 0x2007
+	oamDmaAddr    uint16 = 0x4014
 )
 
 // VPHB SINN
@@ -129,7 +129,7 @@ const (
 // |          (0: read backdrop from EXT pins; 1: output color on EXT pins)
 // +--------- Generate an NMI at the start of the
 //            vertical blanking interval (0: off; 1: on)
-type PpuCtrl byte
+type ppuCtrl byte
 
 const (
 	// NametableAddress - VRAM address
@@ -137,37 +137,37 @@ const (
 	// 1 = $2400
 	// 2 = $2800
 	// 3 = $2C00
-	NametableAddress PpuCtrl = 3
+	nametableAddress ppuCtrl = 3
 
 	// PPU Address Increment
 	// 0 = Increment by 1
 	// 1 = Increment by 32
-	AddressIncrement PpuCtrl = 1 << iota * 2
+	addressIncrement ppuCtrl = 1 << iota * 2
 
 	// SpritePatternTableAddress - VRAM address
 	// 0 = $0000
 	// 1 = $1000
-	SpritePatternTableAddress
+	spritePatternTableAddress
 
 	// Background Pattern Table Address - VRAM address
 	// 0 = $0000
 	// 1 = $1000
-	BackgroundPatternTableAddress
+	backgroundPatternTableAddress
 
 	// SpriteSize
 	// 0 = 8x8
 	// 1 = 8x16
-	SpriteSize
+	spriteSize
 
 	// MasterSlaveSelect - PPU Master/Slave Selection --+   Always write 0
 	// 0 = Receive EXTBG                              +-- in unmodified
 	// 1 = Send EXTBG                               --+   Control Deck
-	MasterSlaveSelect
+	masterSlaveSelect
 
 	// GenerateNMI - Execute NMI on VBlank
 	// 0 = Disabled
 	// 1 = Enabled
-	GenerateNMI
+	generateNMI
 )
 
 // BGRs bMmG
@@ -180,37 +180,37 @@ const (
 // ||+------- Emphasize red
 // |+-------- Emphasize green
 // +--------- Emphasize blue
-type PpuMask byte
+type ppuMask byte
 
 const (
 	// Greyscale - Display Type
 	// 0 = Colour display
 	// 1 = Monochrome display (all palette values ANDed with $30)
-	Greyscale PpuMask = 1 << iota
+	greyscale ppuMask = 1 << iota
 
 	// BackgroundClipping
 	// 0 = BG invisible in left 8-pixel column
 	// 1 = No clipping
-	BackgroundClipping
+	backgroundClipping
 
 	// SpriteClipping
 	// 0 = Sprites invisible in left 8-pixel column
 	// 1 = No clipping
-	SpriteClipping
+	spriteClipping
 
 	// ShowBackground - Background Visibility
 	// 0 = Background not displayed
 	// 1 = Background visible
-	ShowBackground
+	showBackground
 
 	// ShowSprites - Sprite Visibility
 	// 0 = Sprites not displayed
 	// 1 = Sprites visible
-	ShowSprites
+	showSprites
 
-	EmphasizeRed
-	EmphasizeGreen
-	EmphasizeBlue
+	emphasizeRed
+	emphasizeGreen
+	emphasizeBlue
 )
 
 // VSO. ....
@@ -231,32 +231,32 @@ const (
 //            Set at dot 1 of line 241 (the line *after* the post-render
 //            line); cleared after reading $2002 and at dot 1 of the
 //            pre-render line.
-type PpuStatus byte
+type ppuStatus byte
 
 const (
 	// SpriteOverflow - Scanline Sprite Count
 	// 0 = No scanline with more than eight (8) sprites
 	// 1 = At least one line with more than 8 sprites since end of VBlank
-	SpriteOverflow PpuStatus = 0x20 << iota
+	spriteOverflow ppuStatus = 0x20 << iota
 
 	// Sprite0Hit
 	// 0 = Sprite #0 not found
 	// 1 = PPU has hit Sprite #0 since end of VBlank
-	Sprite0Hit
+	sprite0Hit
 
 	// VerticalBlank
 	// 0 = Not occuring
 	// 1 = In VBlank
-	VerticalBlank
+	verticalBlank
 )
 
-type PPU struct {
-	Cartridge *Cartridge
+type ppu struct {
+	cartridge *cartridge
 
-	Ctrl           PpuCtrl   // 0x2000 PPUCTRL
-	Mask           PpuMask   // 0x2001 PPUMASK
-	Status         PpuStatus // 0x2002 PPUSTATUS
-	OAMAddress     byte      // 0x2003 OAMADDR
+	ctrl           ppuCtrl   // 0x2000 PPUCTRL
+	mask           ppuMask   // 0x2001 PPUMASK
+	status         ppuStatus // 0x2002 PPUSTATUS
+	oamAddress     byte      // 0x2003 OAMADDR
 	oamData        [256]byte // 0x2004 OAMDATA
 	spritesInRange byte
 	oamDataBuf     byte
@@ -265,9 +265,9 @@ type PPU struct {
 
 	readBuffer byte // 0x2007 PPUDATA
 
-	Dot      int
-	ScanLine int
-	Frame    uint64
+	dot      int
+	scanline int
+	frame    uint64
 
 	paletteData [32]byte
 	nametable0  [1024]byte
@@ -308,16 +308,16 @@ type PPU struct {
 	buffer []byte
 }
 
-func NewPPU() *PPU {
-	return &PPU{
+func newPpu() *ppu {
+	return &ppu{
 		buffer: make([]byte, 256*240*4),
 	}
 }
 
-func (p *PPU) spritePixel() (pixel, color, priority byte, spriteZero bool) {
+func (p *ppu) spritePixel() (pixel, color, priority byte, spriteZero bool) {
 	// TODO: 16px sprites
-	outputX := byte(p.Dot - 1)
-	if p.Mask&ShowSprites == 0 || (outputX < 8 && p.Mask&SpriteClipping == 0) {
+	outputX := byte(p.dot - 1)
+	if p.mask&showSprites == 0 || (outputX < 8 && p.mask&spriteClipping == 0) {
 		return 0, 0, 0, false
 	}
 
@@ -339,7 +339,7 @@ func (p *PPU) spritePixel() (pixel, color, priority byte, spriteZero bool) {
 		}
 
 		patternTable := p.spriteTable(pattern)
-		patternY := uint16(p.ScanLine - int(y))
+		patternY := uint16(p.scanline - int(y))
 		patternX := outputX - x
 
 		if !flipX {
@@ -358,8 +358,8 @@ func (p *PPU) spritePixel() (pixel, color, priority byte, spriteZero bool) {
 			pattern &= 0xFE
 		}
 
-		patternLo := p.Read(patternTable + pattern*0x10 + patternY)
-		patternHi := p.Read(patternTable + pattern*0x10 + patternY + 8)
+		patternLo := p.read(patternTable + pattern*0x10 + patternY)
+		patternHi := p.read(patternTable + pattern*0x10 + patternY + 8)
 
 		pixLo := patternLo >> patternX & 0x01
 		pixHi := patternHi >> patternX & 0x01 << 1
@@ -377,10 +377,10 @@ func (p *PPU) spritePixel() (pixel, color, priority byte, spriteZero bool) {
 	return 0, 0, 0, false
 }
 
-func (p *PPU) bgPixel() (pixel, color byte) {
-	x := p.Dot - 1
+func (p *ppu) bgPixel() (pixel, color byte) {
+	x := p.dot - 1
 
-	if p.Mask&ShowBackground == 0 || (x < 8 && p.Mask&BackgroundClipping == 0) {
+	if p.mask&showBackground == 0 || (x < 8 && p.mask&backgroundClipping == 0) {
 		return 0, 0
 	}
 
@@ -396,7 +396,7 @@ func (p *PPU) bgPixel() (pixel, color byte) {
 	return pixel, color
 }
 
-func (p *PPU) render() {
+func (p *ppu) render() {
 	bgPixel, bgColor := p.bgPixel()
 	spPixel, spColor, priority, szero := p.spritePixel()
 
@@ -419,39 +419,39 @@ func (p *PPU) render() {
 
 	case bgPixel != 0 && spPixel != 0 && priority == 0:
 		// TODO: sprite 0 hit needs to check more stuff
-		if szero && p.Status&Sprite0Hit == 0 && p.Dot-1 != 255 {
-			p.Status |= Sprite0Hit
+		if szero && p.status&sprite0Hit == 0 && p.dot-1 != 255 {
+			p.status |= sprite0Hit
 		}
 		col = spColor
 
 	case bgPixel != 0 && spPixel != 0 && priority == 1:
 		// TODO: sprite 0 hit needs to check more stuff
-		if szero && p.Status&Sprite0Hit == 0 && p.Dot-1 != 255 {
-			p.Status |= Sprite0Hit
+		if szero && p.status&sprite0Hit == 0 && p.dot-1 != 255 {
+			p.status |= sprite0Hit
 		}
 		col = bgColor
 	}
 
 	paletteIdx := p.readPalette(uint16(col))
-	// p.buffer.SetRGBA(p.Dot-1, p.ScanLine, palette[paletteIdx])
+	// p.buffer.SetRGBA(p.dot-1, p.scanline, palette[paletteIdx])
 	c := palette[paletteIdx]
-	pos := p.ScanLine*256*4 + (p.Dot-1)*4
+	pos := p.scanline*256*4 + (p.dot-1)*4
 	p.buffer[pos+0] = c.R
 	p.buffer[pos+1] = c.G
 	p.buffer[pos+2] = c.B
 	p.buffer[pos+3] = c.A
 }
 
-func (p *PPU) Tick(cpu *CPU) {
+func (p *ppu) tick(cpu *cpu) {
 	renderingEnabled := p.renderingEnabled()
-	preRender := p.ScanLine == 261
-	visibleFrame := p.ScanLine < 240
-	visibleDot := p.Dot > 0 && p.Dot < 257
-	invisibleDot := p.Dot > 320 && p.Dot < 341
+	preRender := p.scanline == 261
+	visibleFrame := p.scanline < 240
+	visibleDot := p.dot > 0 && p.dot < 257
+	invisibleDot := p.dot > 320 && p.dot < 341
 	opFrame := preRender || visibleFrame
 	doOp := renderingEnabled && opFrame
 	fetchDot := visibleDot || invisibleDot
-	shiftDot := (p.Dot > 0 && p.Dot < 257) || (p.Dot > 320 && p.Dot < 337)
+	shiftDot := (p.dot > 0 && p.dot < 257) || (p.dot > 320 && p.dot < 337)
 
 	// render
 	if renderingEnabled && visibleFrame && visibleDot {
@@ -468,14 +468,14 @@ func (p *PPU) Tick(cpu *CPU) {
 
 	// fetch
 	if doOp && fetchDot {
-		switch (p.Dot - 1) % 8 {
+		switch (p.dot - 1) % 8 {
 
 		case 0:
 			//load nametable address
 			p.addressBus = 0x2000 | (p.v & 0x0FFF)
 		case 1:
 			// fetch nametable byte
-			p.nametableByte = p.Read(p.addressBus)
+			p.nametableByte = p.read(p.addressBus)
 
 		case 2:
 			// load attribute address
@@ -489,7 +489,7 @@ func (p *PPU) Tick(cpu *CPU) {
 			g := p.v & 0x40 >> 5
 			b := p.v & 0x02 >> 1
 			shift := (g | b) << 1
-			p.attributeByte = p.Read(p.addressBus) >> shift & 0x03
+			p.attributeByte = p.read(p.addressBus) >> shift & 0x03
 
 		case 4:
 			// load low tile address
@@ -497,7 +497,7 @@ func (p *PPU) Tick(cpu *CPU) {
 			p.addressBus = p.backgroundTable() + uint16(p.nametableByte)*16 + fineY
 		case 5:
 			// fetch low tile byte
-			p.lowTileByte = p.Read(p.addressBus)
+			p.lowTileByte = p.read(p.addressBus)
 
 		case 6:
 			// load high tile address
@@ -505,7 +505,7 @@ func (p *PPU) Tick(cpu *CPU) {
 			p.addressBus = p.backgroundTable() + uint16(p.nametableByte)*16 + fineY + 8
 		case 7:
 			// fetch high tile byte
-			p.highTileByte = p.Read(p.addressBus)
+			p.highTileByte = p.read(p.addressBus)
 
 			// load shift registers
 			p.highTileRegister = p.highTileRegister&0xFF00 | uint16(p.highTileByte)
@@ -520,11 +520,11 @@ func (p *PPU) Tick(cpu *CPU) {
 
 	// update
 	switch {
-	case doOp && p.Dot == 256:
+	case doOp && p.dot == 256:
 		p.incrementY()
-	case doOp && p.Dot == 257:
+	case doOp && p.dot == 257:
 		p.copyX()
-	case renderingEnabled && preRender && p.Dot >= 280 && p.Dot <= 304:
+	case renderingEnabled && preRender && p.dot >= 280 && p.dot <= 304:
 		p.copyY()
 	}
 
@@ -536,39 +536,39 @@ func (p *PPU) Tick(cpu *CPU) {
 
 	// flags
 	switch {
-	case p.ScanLine == 241 && p.Dot == 1:
-		p.Status |= VerticalBlank
-		if !p.suppressNMI && p.Ctrl&GenerateNMI > 0 {
-			cpu.Trigger(NMI)
+	case p.scanline == 241 && p.dot == 1:
+		p.status |= verticalBlank
+		if !p.suppressNMI && p.ctrl&generateNMI > 0 {
+			cpu.trigger(nmi)
 		}
 
-	case preRender && p.Dot == 1:
-		p.Status &^= SpriteOverflow
-		p.Status &^= Sprite0Hit
-		p.Status &^= VerticalBlank
+	case preRender && p.dot == 1:
+		p.status &^= spriteOverflow
+		p.status &^= sprite0Hit
+		p.status &^= verticalBlank
 	}
 
-	if p.Dot == 255 && p.ScanLine == 239 {
-		p.Frame++
+	if p.dot == 255 && p.scanline == 239 {
+		p.frame++
 	}
 
 	// tick
 	switch {
-	case p.Dot == 340 && preRender:
-		p.Dot = 0
-		if p.Frame&1 == 1 && p.Mask&ShowBackground > 0 {
-			p.Dot = 1
+	case p.dot == 340 && preRender:
+		p.dot = 0
+		if p.frame&1 == 1 && p.mask&showBackground > 0 {
+			p.dot = 1
 		}
-		p.ScanLine = 0
-	case p.Dot == 340:
-		p.Dot = 0
-		p.ScanLine++
+		p.scanline = 0
+	case p.dot == 340:
+		p.dot = 0
+		p.scanline++
 	default:
-		p.Dot++
+		p.dot++
 	}
 }
 
-func (p *PPU) evaluateSprites() {
+func (p *ppu) evaluateSprites() {
 	// Cycles 1-64: Secondary OAM (32-byte buffer for current sprites on
 	// scanline) is initialized to $FF - attempting to read $2004 will return
 	// $FF. Internally, the clear operation is implemented by reading from the
@@ -576,23 +576,23 @@ func (p *PPU) evaluateSprites() {
 	// that makes the read always return $FF.
 	// TODO: emulate cycles
 
-	// if p.Dot > 0 && p.Dot < 65 {
+	// if p.dot > 0 && p.dot < 65 {
 	// 	// TODO: reads from 2004 in this range should return FF
 	// 	p.oamDataBuf = 0xFF
-	// 	p.secondaryOAMData[(p.Dot-1)>>1] = p.oamDataBuf
+	// 	p.secondaryOAMData[(p.dot-1)>>1] = p.oamDataBuf
 	// 	return
 	// }
 
 	spriteHeight := p.spriteHeight()
 
-	if p.Dot == 256 {
+	if p.dot == 256 {
 		p.spritesInRange = 0
 		p.sprite0Next = false
 		secAddress := 0
 
 		for i := 0; i < 64; i++ {
 			y := p.oamData[i*4]
-			row := p.ScanLine - int(y) //TODO
+			row := p.scanline - int(y) //TODO
 
 			// sprite not in range
 			if row < 0 || row >= spriteHeight {
@@ -614,29 +614,29 @@ func (p *PPU) evaluateSprites() {
 		}
 		if p.spritesInRange > 8 {
 			p.spritesInRange = 8
-			p.Status |= SpriteOverflow
+			p.status |= spriteOverflow
 		}
 	}
 }
 
-// func (p *PPU) Buffer() *image.RGBA {
+// func (p *ppu) buffer() *image.RGBA {
 // 	return p.buffer
 // }
 
-func (p *PPU) ReadPort(address uint16, c *CPU) byte {
+func (p *ppu) readPort(address uint16, c *cpu) byte {
 	if address < 0x4000 {
 		address = 0x2000 + address%0x08
 	}
 
 	switch address {
-	case PPUSTATUS: // $2002
-		result := p.registerBus&0x1F | byte(p.Status)
-		p.Status &^= VerticalBlank
+	case ppuStatusAddr: // $2002
+		result := p.registerBus&0x1F | byte(p.status)
+		p.status &^= verticalBlank
 
-		if p.ScanLine == 241 && p.Dot <= 2 {
+		if p.scanline == 241 && p.dot <= 2 {
 			p.suppressNMI = true
-			result &^= byte(VerticalBlank)
-			c.Trigger(None)
+			result &^= byte(verticalBlank)
+			c.trigger(none)
 		} else {
 			p.suppressNMI = false
 		}
@@ -644,23 +644,23 @@ func (p *PPU) ReadPort(address uint16, c *CPU) byte {
 		p.w = 0
 		return result
 
-	case OAMDATA: // $2004
-		v := p.oamData[p.OAMAddress]
+	case oamDataAddr: // $2004
+		v := p.oamData[p.oamAddress]
 		p.registerBus = v
 		return v
 
-	case PPUDATA: // $2007
+	case ppuDataAddr: // $2007
 		var ret byte
 		if p.v >= 0x3F00 && p.v <= 0x3FFF {
-			ret = p.Read(p.v)
+			ret = p.read(p.v)
 			// When you read from palette memory, the read buffer gets the contents
 			// of the PPU address. Meaning if you read from $3F00 ... $3FFF, the
 			// read buffer will get the value that is stored in $2F00 ... $2FFF,
 			// because of PPU memory mirrorring.
-			p.readBuffer = p.Read(p.v - 0x1000)
+			p.readBuffer = p.read(p.v - 0x1000)
 		} else if p.v < 0x3F00 {
 			ret = p.readBuffer
-			p.readBuffer = p.Read(p.v)
+			p.readBuffer = p.read(p.v)
 		}
 
 		p.incrementV()
@@ -674,45 +674,45 @@ func (p *PPU) ReadPort(address uint16, c *CPU) byte {
 	return byte(p.registerBus)
 }
 
-func (p *PPU) WritePort(address uint16, value byte, cpu *CPU) {
+func (p *ppu) writePort(address uint16, value byte, cpu *cpu) {
 	if address < 0x4000 {
 		address = 0x2000 + address%0x08
 	}
 	p.registerBus = value
 
 	switch address {
-	case PPUCTRL: // $2000
-		prev := p.Ctrl
-		p.Ctrl = PpuCtrl(value)
+	case ppuCtrlAddr: // $2000
+		prev := p.ctrl
+		p.ctrl = ppuCtrl(value)
 
-		if p.Status&VerticalBlank > 0 && p.Ctrl&GenerateNMI > 0 && prev&GenerateNMI == 0 {
-			cpu.Trigger(NMI_Next)
+		if p.status&verticalBlank > 0 && p.ctrl&generateNMI > 0 && prev&generateNMI == 0 {
+			cpu.trigger(nmiNext)
 		}
 
 		// t: ....BA.. ........ = d: ......BA
 		d := uint16(value)
 		p.t = p.t&0xF3FF | d&0x3<<10
 
-	case PPUMASK: // $2001
+	case ppuMaskAddr: // $2001
 		// TODO: greyscale
 		// TODO: emphasis
-		p.Mask = PpuMask(value)
+		p.mask = ppuMask(value)
 
-	case OAMADDR: // $2003
+	case oamAddrAddr: // $2003
 		// TODO: OAMADDR is set to 0 during each of ticks 257-320 (the sprite
 		// tile loading interval) of the pre-render and visible scanlines
-		p.OAMAddress = value
+		p.oamAddress = value
 
-	case OAMDATA: // $2004
+	case oamDataAddr: // $2004
 		// For emulation purposes, it is probably best to completely ignore
 		// writes during rendering.
 		if p.currentlyRendering() {
 			return
 		}
-		p.oamData[p.OAMAddress] = value
-		p.OAMAddress++
+		p.oamData[p.oamAddress] = value
+		p.oamAddress++
 
-	case PPUSCROLL: // $2005
+	case ppuScrollAddr: // $2005
 		d := uint16(value)
 		if p.w == 0 {
 			// t: ........ ...HGFED = d: HGFED...
@@ -730,7 +730,7 @@ func (p *PPU) WritePort(address uint16, value byte, cpu *CPU) {
 			p.w = 0
 		}
 
-	case PPUADDR: // $2006
+	case ppuAddrAddr: // $2006
 		d := uint16(value)
 		if p.w == 0 {
 			// t: ..FEDCBA ........ = d: ..FEDCBA
@@ -748,13 +748,13 @@ func (p *PPU) WritePort(address uint16, value byte, cpu *CPU) {
 			p.w = 0
 		}
 
-	case PPUDATA: // $2007
-		p.Write(p.v, value)
+	case ppuDataAddr: // $2007
+		p.write(p.v, value)
 		p.incrementV()
 
-	case OAMDMA: // $4014
-		p.oamData[p.OAMAddress] = value
-		p.OAMAddress++
+	case oamDmaAddr: // $4014
+		p.oamData[p.oamAddress] = value
+		p.oamAddress++
 
 	default:
 		log.Printf("unexpected ppu port write: 0x%04X, 0x%02X", address, value)
@@ -762,11 +762,11 @@ func (p *PPU) WritePort(address uint16, value byte, cpu *CPU) {
 	}
 }
 
-func (p *PPU) Read(address uint16) byte {
+func (p *ppu) read(address uint16) byte {
 	address %= 0x4000
 	switch {
 	case address < 0x2000:
-		return p.Cartridge.Read(address)
+		return p.cartridge.read(address)
 
 	case address < 0x3F00:
 		return p.readNametable(address)
@@ -779,11 +779,11 @@ func (p *PPU) Read(address uint16) byte {
 	panic(fmt.Sprintf("unexpected ppu memory read: 0x%04X", address))
 }
 
-func (p *PPU) Write(address uint16, value byte) {
+func (p *ppu) write(address uint16, value byte) {
 	address %= 0x4000
 	switch {
 	case address < 0x2000:
-		p.Cartridge.Write(address, value)
+		p.cartridge.write(address, value)
 
 	case address < 0x3F00:
 		p.writeNametable(address, value)
@@ -797,12 +797,12 @@ func (p *PPU) Write(address uint16, value byte) {
 
 }
 
-func (p *PPU) writeDMA(v byte) {
-	p.oamData[p.OAMAddress] = v
-	p.OAMAddress++
+func (p *ppu) writeDMA(v byte) {
+	p.oamData[p.oamAddress] = v
+	p.oamAddress++
 }
 
-func (p *PPU) readPalette(address uint16) byte {
+func (p *ppu) readPalette(address uint16) byte {
 	switch address {
 	case 0x3F10, 0x3F14, 0x3F18, 0x3F1C:
 		address -= 0x10
@@ -810,7 +810,7 @@ func (p *PPU) readPalette(address uint16) byte {
 	return p.paletteData[address%32]
 }
 
-func (p *PPU) writePalette(address uint16, value byte) {
+func (p *ppu) writePalette(address uint16, value byte) {
 	switch address {
 	case 0x3F10, 0x3F14, 0x3F18, 0x3F1C:
 		address -= 0x10
@@ -818,15 +818,15 @@ func (p *PPU) writePalette(address uint16, value byte) {
 	p.paletteData[address%32] = value
 }
 
-func (p *PPU) readNametable(addr uint16) byte {
-	switch p.Cartridge.MirrorMode {
-	case Horizontal:
+func (p *ppu) readNametable(addr uint16) byte {
+	switch p.cartridge.mirrorMode {
+	case horizontal:
 		if addr < 0x2800 {
 			return p.nametable0[addr%1024]
 		} else {
 			return p.nametable2[addr%1024]
 		}
-	case Vertical:
+	case vertical:
 		if addr < 0x2400 || (addr >= 0x2800 && addr < 0x2C00) {
 			return p.nametable0[addr%1024]
 		} else {
@@ -837,9 +837,9 @@ func (p *PPU) readNametable(addr uint16) byte {
 	return 0
 }
 
-func (p *PPU) writeNametable(addr uint16, val byte) {
-	switch p.Cartridge.MirrorMode {
-	case Horizontal:
+func (p *ppu) writeNametable(addr uint16, val byte) {
+	switch p.cartridge.mirrorMode {
+	case horizontal:
 		if addr < 0x2800 {
 			p.nametable0[addr%1024] = val
 			p.nametable1[addr%1024] = val
@@ -847,7 +847,7 @@ func (p *PPU) writeNametable(addr uint16, val byte) {
 			p.nametable2[addr%1024] = val
 			p.nametable3[addr%1024] = val
 		}
-	case Vertical:
+	case vertical:
 		if addr < 0x2400 {
 			p.nametable0[addr%1024] = val
 			p.nametable2[addr%1024] = val
@@ -858,8 +858,8 @@ func (p *PPU) writeNametable(addr uint16, val byte) {
 	}
 }
 
-func (p *PPU) incrementV() {
-	if p.Ctrl&AddressIncrement > 0 {
+func (p *ppu) incrementV() {
+	if p.ctrl&addressIncrement > 0 {
 		p.v += 32
 	} else {
 		p.v += 1
@@ -870,7 +870,7 @@ func (p *PPU) incrementV() {
 // reached. Bits 0-4 are incremented, with overflow toggling bit 10. This means
 // that bits 0-4 count from 0 to 31 across a single nametable, and bit 10
 // selects the current nametable horizontally.
-func (p *PPU) incrementX() {
+func (p *ppu) incrementX() {
 	coarseX := p.v & 0x001F
 
 	if coarseX == 31 {
@@ -883,7 +883,7 @@ func (p *PPU) incrementX() {
 	p.v += 1
 }
 
-func (p *PPU) copyX() {
+func (p *ppu) copyX() {
 	// v: .....F.. ...EDCBA = t: .....F.. ...EDCBA
 	p.v = p.v&^0x041F | p.t&0x041F
 }
@@ -894,7 +894,7 @@ func (p *PPU) copyX() {
 // Bits 12-14 are fine Y.
 // Bits 5-9 are coarse Y.
 // Bit 11 selects the vertical nametable.
-func (p *PPU) incrementY() {
+func (p *ppu) incrementY() {
 
 	// if fine Y < 7
 	if p.v&0x7000 != 0x7000 {
@@ -919,48 +919,48 @@ func (p *PPU) incrementY() {
 	p.v = p.v&^0x03E0 | coarseY<<5
 }
 
-func (p *PPU) copyY() {
+func (p *ppu) copyY() {
 	// v: .IHGF.ED CBA..... = t: .IHGF.ED CBA.....
 	p.v = p.v&^0x7BE0 | p.t&0x7BE0
 }
 
-func (p *PPU) backgroundTable() uint16 {
-	if p.Ctrl&BackgroundPatternTableAddress > 0 {
+func (p *ppu) backgroundTable() uint16 {
+	if p.ctrl&backgroundPatternTableAddress > 0 {
 		return 0x1000
 	}
 	return 0x0000
 }
 
-func (p *PPU) spriteTable(pattern uint16) uint16 {
-	if p.Ctrl&SpriteSize > 0 {
+func (p *ppu) spriteTable(pattern uint16) uint16 {
+	if p.ctrl&spriteSize > 0 {
 		return pattern & 1 * 0x1000
 	}
 
-	if p.Ctrl&SpritePatternTableAddress > 0 {
+	if p.ctrl&spritePatternTableAddress > 0 {
 		return 0x1000
 	}
 
 	return 0x0000
 }
 
-func (p *PPU) spriteHeight() int {
-	if p.Ctrl&SpriteSize == 0 {
+func (p *ppu) spriteHeight() int {
+	if p.ctrl&spriteSize == 0 {
 		return 8
 	} else {
 		return 16
 	}
 }
 
-func (p *PPU) renderingEnabled() bool {
-	return p.Mask&ShowBackground > 0 || p.Mask&ShowSprites > 0
+func (p *ppu) renderingEnabled() bool {
+	return p.mask&showBackground > 0 || p.mask&showSprites > 0
 }
 
-func (p *PPU) currentlyRendering() bool {
-	return p.renderingEnabled() && (p.ScanLine < 240 || p.ScanLine == 261)
+func (p *ppu) currentlyRendering() bool {
+	return p.renderingEnabled() && (p.scanline < 240 || p.scanline == 261)
 }
 
-func (p *PPU) DrawPatternTables(buf []byte, paletteNum byte) {
-	if p.Cartridge == nil {
+func (p *ppu) drawPatternTables(buf []byte, paletteNum byte) {
+	if p.cartridge == nil {
 		return
 	}
 
@@ -974,8 +974,8 @@ func (p *PPU) DrawPatternTables(buf []byte, paletteNum byte) {
 				fineX := tile * 8
 				patternNum := uint16(coarseY*16 + tile)
 
-				patternLo := p.Read(table + patternNum*16 + fineY)
-				patternHi := p.Read(table + patternNum*16 + fineY + 8)
+				patternLo := p.read(table + patternNum*16 + fineY)
+				patternHi := p.read(table + patternNum*16 + fineY + 8)
 
 				for pixel := 0; pixel < 8; pixel++ {
 					pixello := patternLo & 0x80 >> 7
@@ -999,8 +999,8 @@ func (p *PPU) DrawPatternTables(buf []byte, paletteNum byte) {
 	draw(0x1000, 128)
 }
 
-func (p *PPU) DrawNametables(buf []byte) {
-	if p.Cartridge == nil {
+func (p *ppu) drawNametables(buf []byte) {
+	if p.cartridge == nil {
 		return
 	}
 
@@ -1015,12 +1015,12 @@ func (p *PPU) DrawNametables(buf []byte) {
 				nametableAddr := tileY*32 + tile
 				tileX := tile * 8
 
-				patternNum := uint16(p.Read(nametable + nametableAddr))
+				patternNum := uint16(p.read(nametable + nametableAddr))
 
-				patternLo := p.Read(patternTable + patternNum*16 + patternY)
-				patternHi := p.Read(patternTable + patternNum*16 + patternY + 8)
+				patternLo := p.read(patternTable + patternNum*16 + patternY)
+				patternHi := p.read(patternTable + patternNum*16 + patternY + 8)
 
-				attribute := p.Read(nametable + 960 + (tileY/4)*8 + tile/4)
+				attribute := p.read(nametable + 960 + (tileY/4)*8 + tile/4)
 
 				top := tileY%4/2 == 0
 				bot := tileY%4/2 == 1
@@ -1061,10 +1061,10 @@ func (p *PPU) DrawNametables(buf []byte) {
 	draw(0x2C00, 256, 240)
 }
 
-func (p *PPU) debugDumpSprites() {
-	y := p.ScanLine
+func (p *ppu) debugDumpSprites() {
+	y := p.scanline
 
-	if p.Mask&ShowSprites == 0 {
+	if p.mask&showSprites == 0 {
 		return
 	}
 
@@ -1091,7 +1091,7 @@ func (p *PPU) debugDumpSprites() {
 		if int(spriteY)+int(row) != y {
 			continue
 		}
-		outputX := byte(p.Dot - 1)
+		outputX := byte(p.dot - 1)
 		if outputX < x || outputX > x+7 {
 			continue
 		}
@@ -1103,14 +1103,14 @@ func (p *PPU) debugDumpSprites() {
 
 		// TODO: bigger sprites
 		var patternTable uint16
-		if p.Ctrl&SpritePatternTableAddress > 0 {
+		if p.ctrl&spritePatternTableAddress > 0 {
 			patternTable = 0x1000
 		} else {
 			patternTable = 0x0000
 		}
 
-		patternLo := p.Read(patternTable + patternNum*16 + row)
-		patternHi := p.Read(patternTable + patternNum*16 + row + 8)
+		patternLo := p.read(patternTable + patternNum*16 + row)
+		patternHi := p.read(patternTable + patternNum*16 + row + 8)
 
 		for col := 0; col < 8; col++ {
 			var pixello, pixelhi byte
@@ -1135,69 +1135,69 @@ func (p *PPU) debugDumpSprites() {
 	}
 }
 
-// func (p *PPU) Tick(cpu *CPU) {
+// func (p *ppu) tick(cpu *CPU) {
 // 	// TODO: OAMADDR is set to 0 during each of ticks 257-320 (the sprite tile loading interval) of the pre-render and visible scanlines.
 // 	// TODO: The value of OAMADDR when sprite evaluation starts at tick 65 of the visible scanlines will determine where in OAM sprite evaluation starts, and hence which sprite gets treated as sprite 0
 // 	var (
 // 		width  = 256
 // 		height = 240
 // 	)
-// 	if p.Dot == 1 && p.ScanLine < 240 {
+// 	if p.dot == 1 && p.scanline < 240 {
 
 // 		p.renderBackground()
 // 		p.renderSprites()
 // 		// for j := 0; j < 256; j++ {
-// 		// 	p.buffer.SetRGBA(j, p.ScanLine+1, color.RGBA{255, 255, 255, 255})
+// 		// 	p.buffer.SetRGBA(j, p.scanline+1, color.RGBA{255, 255, 255, 255})
 // 		// }
 // 	}
-// 	if p.Dot >= width {
+// 	if p.dot >= width {
 // 		// hblank = true
 // 	}
-// 	if p.Dot == 340 {
-// 		p.Dot = 0
-// 		p.ScanLine++
+// 	if p.dot == 340 {
+// 		p.dot = 0
+// 		p.scanline++
 // 	} else {
-// 		p.Dot++
+// 		p.dot++
 // 	}
 
-// 	if p.ScanLine == height {
+// 	if p.scanline == height {
 // 		// post render
 // 	}
-// 	if p.ScanLine > height && p.ScanLine < 261 {
-// 		p.Status |= VerticalBlank
+// 	if p.scanline > height && p.scanline < 261 {
+// 		p.status |= VerticalBlank
 // 		//TODO: read up on timing info instead of relying on bool
-// 		if !p.nmiGenerated && p.Ctrl&GenerateNMI > 0 {
+// 		if !p.nmiGenerated && p.ctrl&GenerateNMI > 0 {
 // 			p.nmiGenerated = true
 // 			cpu.trigger(NMI)
 // 		}
 // 	} else {
 // 		p.nmiGenerated = false
-// 		p.Status &^= VerticalBlank
+// 		p.status &^= VerticalBlank
 // 	}
 
-// 	if p.ScanLine == 261 {
+// 	if p.scanline == 261 {
 // 		// pre render
-// 		if p.Dot == 1 {
-// 			p.Status &^= SpriteOverflow
-// 			p.Status &^= Sprite0Hit
-// 			p.Status &^= VerticalBlank
+// 		if p.dot == 1 {
+// 			p.status &^= SpriteOverflow
+// 			p.status &^= Sprite0Hit
+// 			p.status &^= VerticalBlank
 // 		}
-// 		p.ScanLine = 0
-// 		p.Frame++
+// 		p.scanline = 0
+// 		p.frame++
 // 	}
 // }
 
-// func (p *PPU) renderBackground() {
-// 	nametable := 0x2000 * int(p.Ctrl&NametableAddress)
+// func (p *ppu) renderBackground() {
+// 	nametable := 0x2000 * int(p.ctrl&NametableAddress)
 
 // 	var patternTable uint16
-// 	if p.Ctrl&BackgroundPatternTableAddress > 0 {
+// 	if p.ctrl&BackgroundPatternTableAddress > 0 {
 // 		patternTable = 0x1000
 // 	} else {
 // 		patternTable = 0x0000
 // 	}
 
-// 	y := p.ScanLine // [0,240[
+// 	y := p.scanline // [0,240[
 
 // 	tilesPerScanline := 32
 // 	pixelsPerRow := 8

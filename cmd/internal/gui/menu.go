@@ -138,7 +138,11 @@ func (m *Menu) Activate() error {
 		return nil
 	}
 
-	return m.Items[m.focus].Callback()
+	if m.Items[m.focus].Callback != nil {
+		return m.Items[m.focus].Callback()
+	}
+
+	return nil
 }
 
 func (m *Menu) Draw(v *View) error {
@@ -175,14 +179,14 @@ func (m *Menu) Draw(v *View) error {
 		W: m.Margin.Left + maxLabelWidth + maxValueWidth + m.Margin.Right,
 		H: m.Margin.Top + height + m.Margin.Bottom,
 	}
-	viewport := v.Renderer.GetViewport()
+	viewport := v.renderer.GetViewport()
 	anchor(bgRect, m.Position, &viewport, m.Margin)
 
-	if err := drawRect(v.Renderer, nil, m.Backdrop); err != nil {
+	if err := drawRect(v.renderer, nil, m.Backdrop); err != nil {
 		return fmt.Errorf("menu: unable to draw overlay: %s", err)
 	}
 
-	if err := drawRect(v.Renderer, bgRect, m.Background); err != nil {
+	if err := drawRect(v.renderer, bgRect, m.Background); err != nil {
 		return fmt.Errorf("menu: unable to draw background: %s", err)
 	}
 
@@ -205,7 +209,7 @@ func (m *Menu) Draw(v *View) error {
 			valueColor = item.Value.Hover
 		}
 
-		_, lh, err := v.Renderer.DrawText(item.Label.Text, item.Label.Font, item.Label.Size, Left, labelColor, &sdl.Rect{
+		_, lh, err := v.renderer.DrawText(item.Label.Text, item.Label.Font, item.Label.Size, Left, labelColor, &sdl.Rect{
 			X: x0 + item.Label.Padding.Left,
 			Y: y0 + item.Label.Padding.Top + y,
 		})
@@ -213,7 +217,7 @@ func (m *Menu) Draw(v *View) error {
 			return fmt.Errorf("menu: unable to draw label %q: %s", item.Label.Text, err)
 		}
 
-		_, vh, err := v.Renderer.DrawText(item.Value.Text, item.Value.Font, item.Value.Size, Left, valueColor, &sdl.Rect{
+		_, vh, err := v.renderer.DrawText(item.Value.Text, item.Value.Font, item.Value.Size, Left, valueColor, &sdl.Rect{
 			X: x0 + maxLabelWidth + item.Value.Padding.Left,
 			Y: y0 + y + item.Value.Padding.Top,
 		})

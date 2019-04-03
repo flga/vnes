@@ -50,7 +50,7 @@ func (s *Status) Update(v *View) {
 		s.TTL = time.Time{}
 	}
 
-	s.viewRect = *v.Rect
+	s.viewRect = *v.rect
 }
 
 func (s *Status) Draw(v *View) error {

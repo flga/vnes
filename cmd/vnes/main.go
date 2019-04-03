@@ -24,7 +24,26 @@ func init() {
 }
 
 func initSDL() (func(), error) {
-	if err := sdl.Init(sdl.INIT_GAMECONTROLLER | sdl.INIT_JOYSTICK | sdl.INIT_VIDEO | sdl.INIT_EVENTS); err != nil {
+	// axis events were backing up the queue and delaying other events, like
+	// button presses. This is either an issue with my controller, with sdl, or
+	// we're just processing events too slowly (might have something to do with
+	// vsync?). since zappers are not supported yet, just ignore axis events
+	// for now
+	sdl.SetEventFilterFunc(func(e sdl.Event, _ interface{}) bool {
+		if _, ok := e.(*sdl.ControllerAxisEvent); ok {
+			return false
+		}
+		if _, ok := e.(*sdl.JoyAxisEvent); ok {
+			return false
+		}
+		if _, ok := e.(*sdl.MouseMotionEvent); ok {
+			return false
+		}
+
+		return true
+	}, nil)
+
+	if err := sdl.Init(sdl.INIT_GAMECONTROLLER | sdl.INIT_VIDEO | sdl.INIT_EVENTS); err != nil {
 		return func() {}, fmt.Errorf("initSDL: unable to init sdl: %s", err)
 	}
 
@@ -40,7 +59,6 @@ func initTTF() (gui.FontMap, error) {
 	defer f.Close()
 
 	openFunc := func(path string) (io.ReadCloser, error) {
-		// return os.Open(filepath.Join("assets", path))
 		return assets.Open(filepath.Join("assets", path))
 	}
 
@@ -52,16 +70,6 @@ func initTTF() (gui.FontMap, error) {
 	return fontMap, nil
 }
 
-func loadRom(path string) (*nes.Cartridge, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("unable to open rom: %s", err)
-	}
-	defer f.Close()
-
-	return nes.LoadINES(f)
-}
-
 func run(romPath string, trace bool, cpuprof, memprof string) error {
 	var out io.Writer
 	if trace {
@@ -71,11 +79,7 @@ func run(romPath string, trace bool, cpuprof, memprof string) error {
 	console := nes.NewConsole(0, out)
 
 	if romPath != "" {
-		cartridge, err := loadRom(romPath)
-		if err != nil {
-			return err
-		}
-		console.Load(cartridge)
+		console.LoadPath(romPath)
 	}
 
 	quitSDL, err := initSDL()
@@ -90,7 +94,7 @@ func run(romPath string, trace bool, cpuprof, memprof string) error {
 	}
 
 	audioEngine := &audioEngine{
-		AudioChan: console.APU.Channel(),
+		AudioChan: console.AudioChannel(),
 	}
 
 	if err := audioEngine.init(true); err != nil {

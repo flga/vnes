@@ -7,26 +7,26 @@ import (
 )
 
 // TODO: rework this
-func disassemble(out io.Writer, bus *SysBus,
+func disassemble(out io.Writer, bus *sysBus,
 	inst_pc uint16, a, x, y, p, sp byte,
-	inst Instruction, intermediateAddr, resolvedAddr uint16, cycles uint64, ppu *PPU) {
+	inst instruction, intermediateAddr, resolvedAddr uint16, cycles uint64, ppu *ppu) {
 	var strlen int
 
 	n, _ := fmt.Fprintf(out, "%04X  ", inst_pc)
 	strlen += n
 
-	if inst.Size == 1 {
-		n, _ := fmt.Fprintf(out, "%02X      ", inst.OpCode)
+	if inst.size == 1 {
+		n, _ := fmt.Fprintf(out, "%02X      ", inst.opCode)
 		strlen += n
-	} else if inst.Size == 2 {
-		n, _ := fmt.Fprintf(out, "%02X %02X   ", inst.OpCode, bus.Read(inst_pc+1))
+	} else if inst.size == 2 {
+		n, _ := fmt.Fprintf(out, "%02X %02X   ", inst.opCode, bus.read(inst_pc+1))
 		strlen += n
-	} else if inst.Size == 3 {
-		n, _ := fmt.Fprintf(out, "%02X %02X %02X", inst.OpCode, bus.Read(inst_pc+1), bus.Read(inst_pc+2))
+	} else if inst.size == 3 {
+		n, _ := fmt.Fprintf(out, "%02X %02X %02X", inst.opCode, bus.read(inst_pc+1), bus.read(inst_pc+2))
 		strlen += n
 	}
 
-	if inst.Illegal {
+	if inst.illegal {
 		n, _ := fmt.Fprint(out, " *")
 		strlen += n
 	} else {
@@ -34,36 +34,36 @@ func disassemble(out io.Writer, bus *SysBus,
 		strlen += n
 	}
 
-	n, _ = fmt.Fprint(out, inst.Name, " ")
+	n, _ = fmt.Fprint(out, inst.name, " ")
 	strlen += n
 
-	switch inst.Mode {
-	case Accumulator:
+	switch inst.mode {
+	case accumulator:
 		n, _ := fmt.Fprint(out, "A")
 		strlen += n
-	case Implied:
+	case implied:
 	default:
 		var arg uint16
-		switch inst.Mode {
-		case Immediate, ZeroPage, ZeroPageIndexedX, ZeroPageIndexedY, PreIndexedIndirect, PostIndexedIndirect:
-			arg = uint16(bus.Read(inst_pc + 1))
-		case Absolute, Indirect, IndexedX, IndexedY:
-			arg = uint16(bus.Read(inst_pc+1)) | uint16(bus.Read(inst_pc+2))<<8
-		case Relative:
+		switch inst.mode {
+		case immediate, zeroPage, zeroPageIndexedX, zeroPageIndexedY, preIndexedIndirect, postIndexedIndirect:
+			arg = uint16(bus.read(inst_pc + 1))
+		case absolute, indirect, indexedX, indexedY:
+			arg = uint16(bus.read(inst_pc+1)) | uint16(bus.read(inst_pc+2))<<8
+		case relative:
 			arg = resolvedAddr
 		}
 
-		n, _ := fmt.Fprintf(out, addressingFormats[inst.Mode], arg)
+		n, _ := fmt.Fprintf(out, addressingFormats[inst.mode], arg)
 		strlen += n
 	}
 
 	// // DEBUG INFO
-	// switch inst.Mode {
+	// switch inst.mode {
 	// case Indirect:
 	// 	n, _ := fmt.Fprintf(out, " = %04X", resolvedAddr)
 	// 	strlen += n
 	// case ZeroPage, Absolute:
-	// 	if inst.Name != "JMP" && inst.Name != "JSR" {
+	// 	if inst.name != "JMP" && inst.name != "JSR" {
 	// 		n, _ := fmt.Fprintf(out, " = %02X", bus.Read(resolvedAddr))
 	// 		strlen += n
 	// 	}
@@ -85,24 +85,24 @@ func disassemble(out io.Writer, bus *SysBus,
 	fmt.Fprint(out, strings.Repeat(" ", 48-strlen))
 	var col, scanLine int
 	if ppu != nil {
-		col, scanLine = ppu.Dot, ppu.ScanLine
+		col, scanLine = ppu.dot, ppu.scanline
 	}
 	fmt.Fprintf(out, "A:%02X X:%02X Y:%02X P:%02X SP:%02X PPU:%3d,%3d CYC:%d\n", a, x, y, p, sp, col, scanLine, cycles)
 	// fmt.Fprintf(out, "A:%02X X:%02X Y:%02X P:%02X SP:%02X CYC:%d\n", a, x, y, p, sp, cycles /* , frame */)
 }
 
-var addressingFormats = map[AddressingMode]string{
-	Immediate:           "#$%02X",    // #aa
-	Absolute:            "$%04X",     // aaaa
-	ZeroPage:            "$%02X",     // aa
-	Implied:             "",          //
-	Indirect:            "($%04X)",   // (aaaa)
-	IndexedX:            "$%04X,X",   // aaaa,X
-	IndexedY:            "$%04X,Y",   // aaaa,Y
-	ZeroPageIndexedX:    "$%02X,X",   // aa,X
-	ZeroPageIndexedY:    "$%02X,Y",   // aa,Y
-	PreIndexedIndirect:  "($%02X,X)", // (aa,X)
-	PostIndexedIndirect: "($%02X),Y", // (aa),Y
-	Relative:            "$%04X",     // aaaa
-	Accumulator:         "A",         // A
+var addressingFormats = map[addressingMode]string{
+	immediate:           "#$%02X",    // #aa
+	absolute:            "$%04X",     // aaaa
+	zeroPage:            "$%02X",     // aa
+	implied:             "",          //
+	indirect:            "($%04X)",   // (aaaa)
+	indexedX:            "$%04X,X",   // aaaa,X
+	indexedY:            "$%04X,Y",   // aaaa,Y
+	zeroPageIndexedX:    "$%02X,X",   // aa,X
+	zeroPageIndexedY:    "$%02X,Y",   // aa,Y
+	preIndexedIndirect:  "($%02X,X)", // (aa,X)
+	postIndexedIndirect: "($%02X),Y", // (aa),Y
+	relative:            "$%04X",     // aaaa
+	accumulator:         "A",         // A
 }

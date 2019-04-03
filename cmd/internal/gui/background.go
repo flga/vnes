@@ -46,7 +46,7 @@ func (r *Background) Draw(v *View) error {
 		return nil
 	}
 
-	return v.Renderer.DrawBackground(r.RGBA8888, v.Rect)
+	return v.renderer.DrawBackground(r.RGBA8888, v.rect)
 
 	// pixels, _, err := v.Texture.Lock(nil)
 	// if err != nil {

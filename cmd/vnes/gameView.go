@@ -21,15 +21,25 @@ var controllerMapping = map[uint8]nes.Button{
 	sdl.CONTROLLER_BUTTON_DPAD_RIGHT: nes.Right,
 }
 
-var keyboardMapping = map[sdl.Keycode]nes.Button{
-	sdl.K_a:      nes.A,
-	sdl.K_z:      nes.B,
-	sdl.K_RETURN: nes.Start,
-	sdl.K_RSHIFT: nes.Select,
-	sdl.K_UP:     nes.Up,
-	sdl.K_DOWN:   nes.Down,
-	sdl.K_LEFT:   nes.Left,
-	sdl.K_RIGHT:  nes.Right,
+var keyboardMapping = map[sdl.Keycode]struct {
+	ctrl int
+	btn  nes.Button
+}{
+	sdl.K_RETURN: {ctrl: 0, btn: nes.Start},
+	sdl.K_z:      {ctrl: 0, btn: nes.Select},
+	sdl.K_RSHIFT: {ctrl: 0, btn: nes.A},
+	sdl.K_RCTRL:  {ctrl: 0, btn: nes.B},
+	sdl.K_UP:     {ctrl: 0, btn: nes.Up},
+	sdl.K_DOWN:   {ctrl: 0, btn: nes.Down},
+	sdl.K_LEFT:   {ctrl: 0, btn: nes.Left},
+	sdl.K_RIGHT:  {ctrl: 0, btn: nes.Right},
+
+	sdl.K_v: {ctrl: 1, btn: nes.A},
+	sdl.K_b: {ctrl: 1, btn: nes.B},
+	sdl.K_w: {ctrl: 1, btn: nes.Up},
+	sdl.K_s: {ctrl: 1, btn: nes.Down},
+	sdl.K_a: {ctrl: 1, btn: nes.Left},
+	sdl.K_d: {ctrl: 1, btn: nes.Right},
 }
 
 type gameView struct {
@@ -68,7 +78,7 @@ func newGameView(title string, scale int, fontMap gui.FontMap) (*gameView, error
 }
 
 func (v *gameView) Init(engine *engine, console *nes.Console) error {
-	font, ok := v.FontMap["RuneScape UF"]
+	font, ok := v.Font("RuneScape UF")
 	if !ok {
 		return fmt.Errorf("font %q not found", "RuneScape UF")
 	}
@@ -102,10 +112,10 @@ func (v *gameView) Init(engine *engine, console *nes.Console) error {
 			Tag:      "grid",
 			Disabled: true,
 			List: []*gui.Grid{
-				&gui.Grid{Rows: 240, Cols: 256, Color: white64, UpdateFn: func(g *gui.Grid) { g.Bounds = *v.Rect }},
-				&gui.Grid{Rows: 30, Cols: 32, Color: white128, UpdateFn: func(g *gui.Grid) { g.Bounds = *v.Rect }},
-				&gui.Grid{Rows: 8, Cols: 8, Square: true, Color: white, UpdateFn: func(g *gui.Grid) { g.Bounds = *v.Rect }},
-				&gui.Grid{Rows: 1, Cols: 1, Borders: true, Color: white, UpdateFn: func(g *gui.Grid) { g.Bounds = *v.Rect }},
+				&gui.Grid{Rows: 240, Cols: 256, Color: white64, UpdateFn: func(g *gui.Grid) { g.Bounds = v.Rect() }},
+				&gui.Grid{Rows: 30, Cols: 32, Color: white128, UpdateFn: func(g *gui.Grid) { g.Bounds = v.Rect() }},
+				&gui.Grid{Rows: 8, Cols: 8, Square: true, Color: white, UpdateFn: func(g *gui.Grid) { g.Bounds = v.Rect() }},
+				&gui.Grid{Rows: 1, Cols: 1, Borders: true, Color: white, UpdateFn: func(g *gui.Grid) { g.Bounds = v.Rect() }},
 			},
 		},
 		&gui.Message{
@@ -170,25 +180,6 @@ func (v *gameView) Init(engine *engine, console *nes.Console) error {
 				},
 				gui.MenuItem{
 					Label: gui.Cell{
-						Text:    "VSync",
-						Font:    font,
-						Size:    32,
-						Padding: gui.Padding{Top: 5, Right: 15, Bottom: 5, Left: 0},
-						Color:   white,
-						Hover:   lightBlue,
-					},
-					Value: gui.Cell{
-						UpdateFn: func() string { return boolToStr(v.VSync()) },
-						Font:     font,
-						Size:     32,
-						Padding:  gui.Padding{Top: 5, Right: 0, Bottom: 5, Left: 15},
-						Color:    white,
-						Hover:    lightBlue,
-					},
-					Callback: func() error { return v.ToggleVSync() },
-				},
-				gui.MenuItem{
-					Label: gui.Cell{
 						Text:    "Volume",
 						Font:    font,
 						Size:    32,
@@ -204,7 +195,7 @@ func (v *gameView) Init(engine *engine, console *nes.Console) error {
 						Color:   white,
 						Hover:   lightBlue,
 					},
-					Callback: func() error { fmt.Println("Volume"); return nil },
+					// Callback: func() error { fmt.Println("Volume"); return nil },
 				},
 				gui.MenuItem{
 					Label: gui.Cell{
@@ -223,7 +214,7 @@ func (v *gameView) Init(engine *engine, console *nes.Console) error {
 						Color:   white,
 						Hover:   lightBlue,
 					},
-					Callback: func() error { fmt.Println("Filter Output"); return nil },
+					// Callback: func() error { fmt.Println("Filter Output"); return nil },
 				},
 				gui.MenuItem{
 					Label: gui.Cell{
@@ -242,7 +233,7 @@ func (v *gameView) Init(engine *engine, console *nes.Console) error {
 						Color:   white,
 						Hover:   lightBlue,
 					},
-					Callback: func() error { fmt.Println("Channels"); return nil },
+					// Callback: func() error { fmt.Println("Channels"); return nil },
 				},
 				gui.MenuItem{
 					Label: gui.Cell{
@@ -261,7 +252,7 @@ func (v *gameView) Init(engine *engine, console *nes.Console) error {
 						Color:   white,
 						Hover:   lightBlue,
 					},
-					Callback: func() error { fmt.Println("Mute Pulse 1"); return nil },
+					// Callback: func() error { fmt.Println("Mute Pulse 1"); return nil },
 				},
 				gui.MenuItem{
 					Label: gui.Cell{
@@ -280,7 +271,7 @@ func (v *gameView) Init(engine *engine, console *nes.Console) error {
 						Color:   white,
 						Hover:   lightBlue,
 					},
-					Callback: func() error { fmt.Println("Mute Pulse 2"); return nil },
+					// Callback: func() error { fmt.Println("Mute Pulse 2"); return nil },
 				},
 				gui.MenuItem{
 					Label: gui.Cell{
@@ -299,7 +290,7 @@ func (v *gameView) Init(engine *engine, console *nes.Console) error {
 						Color:   white,
 						Hover:   lightBlue,
 					},
-					Callback: func() error { fmt.Println("Mute Triangle"); return nil },
+					// Callback: func() error { fmt.Println("Mute Triangle"); return nil },
 				},
 				gui.MenuItem{
 					Label: gui.Cell{
@@ -318,7 +309,7 @@ func (v *gameView) Init(engine *engine, console *nes.Console) error {
 						Color:   white,
 						Hover:   lightBlue,
 					},
-					Callback: func() error { fmt.Println("Mute Noise"); return nil },
+					// Callback: func() error { fmt.Println("Mute Noise"); return nil },
 				},
 				gui.MenuItem{
 					Label: gui.Cell{
@@ -337,7 +328,7 @@ func (v *gameView) Init(engine *engine, console *nes.Console) error {
 						Color:   white,
 						Hover:   lightBlue,
 					},
-					Callback: func() error { fmt.Println("Mute DMC"); return nil },
+					// Callback: func() error { fmt.Println("Mute DMC"); return nil },
 				},
 				gui.MenuItem{
 					Label: gui.Cell{
@@ -362,7 +353,7 @@ func (v *gameView) Init(engine *engine, console *nes.Console) error {
 						Color:   white,
 						Hover:   lightBlue,
 					},
-					Callback: func() error { fmt.Println("Stop Recording"); return nil },
+					// Callback: func() error { fmt.Println("Stop Recording"); return nil },
 				},
 				gui.MenuItem{
 					Label: gui.Cell{
@@ -390,7 +381,7 @@ func (v *gameView) Init(engine *engine, console *nes.Console) error {
 						Color:   white,
 						Hover:   lightBlue,
 					},
-					Callback: func() error { fmt.Println("Pause Recording"); return nil },
+					// Callback: func() error { fmt.Println("Pause Recording"); return nil },
 				},
 			},
 		},
@@ -411,144 +402,117 @@ func (v *gameView) SetStatusMsg(m string) {
 	}
 }
 
-func (v *gameView) Handle(event sdl.Event, console *nes.Console) (handled bool, err error) {
-	if handled, err := v.View.Handle(event, console); handled || err != nil {
+func (v *gameView) Handle(evt sdl.Event, engine *engine, console *nes.Console) (handled bool, err error) {
+	if handled, err := v.View.Handle(evt); handled || err != nil {
 		return handled, err
 	}
 
-	press := func(b nes.Button, pressed bool) {
-		fmt.Println(b, pressed)
-		if pressed {
-			console.Controller1.Press(b)
-		} else {
-			console.Controller1.Release(b)
+	if !v.Focused() {
+		return false, nil
+	}
+
+	if handled, err := v.handleGuiEvts(evt, engine); handled || err != nil {
+		return handled, err
+	}
+	if handled, err := v.handleMediaEvts(evt, console); handled || err != nil {
+		return handled, err
+	}
+	if handled, err := v.handleConsoleEvts(evt, engine, console); handled || err != nil {
+		return handled, err
+	}
+
+	return false, nil
+}
+
+func (v *gameView) handleGuiEvts(evt sdl.Event, engine *engine) (bool, error) {
+	menu, ok := v.layers.Find("menu").(*gui.Menu)
+	if !ok {
+		return false, errors.New("unable to find menu component")
+	}
+
+	if isButtonPress(evt, sdl.CONTROLLER_BUTTON_Y) || isKeyPress(evt, sdl.K_ESCAPE) {
+		menu.Toggle()
+		return true, engine.pauseUnpause()
+	}
+
+	if menu.Enabled() {
+		if isButtonPress(evt, sdl.CONTROLLER_BUTTON_A) || isKeyPress(evt, sdl.K_RETURN) {
+			return true, menu.Activate()
+		}
+		if isButtonPress(evt, sdl.CONTROLLER_BUTTON_DPAD_UP) || isKeyPress(evt, sdl.K_UP) {
+			menu.Up()
+			return true, nil
+		}
+		if isButtonPress(evt, sdl.CONTROLLER_BUTTON_DPAD_DOWN) || isKeyPress(evt, sdl.K_DOWN) {
+			menu.Down()
+			return true, nil
 		}
 	}
 
-	switch evt := event.(type) {
+	if isKeyPress(evt, sdl.K_g) {
+		v.layers.Find("grid").Toggle()
+		return true, nil
+	}
 
+	return false, nil
+}
+
+func (v *gameView) handleMediaEvts(evt sdl.Event, console *nes.Console) (bool, error) {
+	if isKeyPress(evt, sdl.K_o) {
+		v.recording = !v.recording
+		v.pauseRecording = false
+		if v.recording {
+			return true, console.StartRecording()
+		}
+
+		return true, console.StopRecording()
+	}
+
+	if isKeyPress(evt, sdl.K_o, sdl.KMOD_SHIFT) {
+		if !v.recording {
+			return true, nil
+		}
+		v.pauseRecording = !v.pauseRecording
+		if v.pauseRecording {
+			console.PauseRecording()
+		} else {
+			console.UnpauseRecording()
+		}
+
+		return true, nil
+	}
+
+	return false, nil
+}
+
+func (v *gameView) handleConsoleEvts(evt sdl.Event, engine *engine, console *nes.Console) (bool, error) {
+	press := func(ctrl int, b nes.Button, pressed bool) {
+		if pressed {
+			console.Press(ctrl, b)
+		} else {
+			console.Release(ctrl, b)
+		}
+	}
+
+	if evt, ok := isDropEvent(evt, sdl.DROPFILE, v.ID()); ok {
+		return true, console.LoadPath(evt.File)
+	}
+
+	if isButtonPress(evt, sdl.CONTROLLER_BUTTON_X) || isKeyPress(evt, sdl.K_r) {
+		console.Reset()
+		return true, nil
+	}
+
+	switch evt := evt.(type) {
 	case *sdl.ControllerButtonEvent:
-		if evt.Button == sdl.CONTROLLER_BUTTON_Y && evt.Type == sdl.CONTROLLERBUTTONDOWN {
-			fmt.Println("toggle menu (ctrl)")
-			v.layers.Find("menu").Toggle()
-			return true, nil
-		}
-
-		if v.layers.Find("menu").Enabled() {
-			if evt.Type != sdl.CONTROLLERBUTTONDOWN {
-				return false, nil
-			}
-
-			menu, ok := v.layers.Find("menu").(*gui.Menu)
-			if !ok {
-				return false, errors.New("menu not found")
-			}
-
-			switch evt.Button {
-			case sdl.CONTROLLER_BUTTON_A:
-				fmt.Println("Activate (ctrl)")
-				return true, menu.Activate()
-			case sdl.CONTROLLER_BUTTON_DPAD_UP:
-				fmt.Println("Up (ctrl)")
-				menu.Up()
-			case sdl.CONTROLLER_BUTTON_DPAD_DOWN:
-				fmt.Println("Down (ctrl)")
-				menu.Down()
-			}
-
-			return true, nil
-		}
-
 		if btn, ok := controllerMapping[evt.Button]; ok {
-			fmt.Println("press (ctrl)")
-			press(btn, evt.Type == sdl.CONTROLLERBUTTONDOWN)
-			return true, nil
-		}
-
-		if evt.Button == sdl.CONTROLLER_BUTTON_X && evt.Type == sdl.CONTROLLERBUTTONDOWN {
-			fmt.Println("reset (ctrl)")
-			console.Reset()
+			press(engine.controllers.which(evt.Which), btn, evt.Type == sdl.CONTROLLERBUTTONDOWN)
 			return true, nil
 		}
 
 	case *sdl.KeyboardEvent:
-		if evt.Type == sdl.KEYUP && evt.Keysym.Sym == sdl.K_ESCAPE {
-			fmt.Println("toggle menu (kb)")
-			v.layers.Find("menu").Toggle()
-			return true, nil
-		}
-
-		if v.layers.Find("menu").Enabled() {
-			if evt.Type != sdl.KEYUP {
-				return false, nil
-			}
-
-			menu, ok := v.layers.Find("menu").(*gui.Menu)
-			if !ok {
-				return false, errors.New("menu not found")
-			}
-
-			switch evt.Keysym.Sym {
-			case sdl.K_LEFT:
-				fmt.Println("Activate (kb)")
-				return true, menu.Activate()
-			case sdl.K_RIGHT:
-				fmt.Println("Activate (kb)")
-				return true, menu.Activate()
-			case sdl.K_UP:
-				fmt.Println("Up (kb)")
-				menu.Up()
-			case sdl.K_DOWN:
-				fmt.Println("Down (kb)")
-				menu.Down()
-			}
-
-			return true, nil
-		}
-
-		if btn, ok := keyboardMapping[evt.Keysym.Sym]; ok {
-			fmt.Println("press (kb)")
-			press(btn, evt.Type == sdl.KEYDOWN)
-			return true, nil
-		}
-
-		if evt.Type == sdl.KEYUP && evt.Keysym.Sym == sdl.K_g {
-			fmt.Println("toggle grid (kb)")
-			v.layers.Find("grid").Toggle()
-			return true, nil
-		}
-
-		if evt.Type == sdl.KEYUP && evt.Keysym.Sym == sdl.K_r {
-			fmt.Println("reset (kb)")
-			console.Reset()
-			return true, nil
-		}
-
-		if evt.Type == sdl.KEYUP && evt.Keysym.Sym == sdl.K_o {
-			alt := evt.Keysym.Mod == sdl.KMOD_ALT ||
-				evt.Keysym.Mod == sdl.KMOD_LALT ||
-				evt.Keysym.Mod == sdl.KMOD_RALT
-			if v.recording && alt {
-				v.pauseRecording = !v.pauseRecording
-				if v.pauseRecording {
-					fmt.Println("pause (kb)")
-					console.PauseRecording()
-				} else {
-					fmt.Println("unpause (kb)")
-					console.UnpauseRecording()
-				}
-			} else {
-				v.recording = !v.recording
-				if v.recording {
-					fmt.Println("start rec (kb)")
-					if err := console.StartRecording(); err != nil {
-						return true, err
-					}
-				} else {
-					fmt.Println("stop rec (kb)")
-					console.StopRecording()
-				}
-			}
+		if entry, ok := keyboardMapping[evt.Keysym.Sym]; ok {
+			press(entry.ctrl, entry.btn, evt.Type == sdl.KEYDOWN)
 			return true, nil
 		}
 	}

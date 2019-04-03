@@ -29,39 +29,39 @@ package nes
 // ╟╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┤           ║
 // ║ 0x0000 - 0x00FF │ 256   │ ZERO PAGE               │           ║
 // ╚═════════════════╧═══════╧═════════════════════════╧═══════════╝
-type SysBus struct {
-	Cartridge *Cartridge
-	RAM       *RAM
-	CPU       *CPU
-	APU       *APU
-	PPU       *PPU
-	Ctrl1     *Controller
+type sysBus struct {
+	cartridge *cartridge
+	ram       *ram
+	cpu       *cpu
+	apu       *apu
+	ppu       *ppu
+	ctrl1     *controller
+	ctrl2     *controller
 }
 
-func (bus *SysBus) Read(address uint16) byte {
+func (bus *sysBus) read(address uint16) byte {
 	if address < 0x2000 {
-		return bus.RAM.Read(address)
+		return bus.ram.read(address)
 	}
 
 	if address >= 0x2000 && address <= 0x3FFF {
-		return bus.PPU.ReadPort(address, bus.CPU)
+		return bus.ppu.readPort(address, bus.cpu)
 	}
 
 	if address == 0x4015 {
-		return byte(bus.APU.ReadPort(address))
+		return byte(bus.apu.readPort(address))
 	}
 
 	if address == 0x4016 {
-		return byte(bus.Ctrl1.Read())
+		return byte(bus.ctrl1.read())
 	}
 
 	if address == 0x4017 {
-		// TODO: controller 2
-		return 0
+		return byte(bus.ctrl2.read())
 	}
 
 	if address == 0x4014 {
-		return bus.PPU.ReadPort(address, bus.CPU)
+		return bus.ppu.readPort(address, bus.cpu)
 	}
 
 	if address < 0x4020 {
@@ -77,35 +77,36 @@ func (bus *SysBus) Read(address uint16) byte {
 	}
 
 	if address <= 0xFFFF {
-		return bus.Cartridge.Read(address)
+		return bus.cartridge.read(address)
 	}
 
 	panic("erm...") //TODO
 }
 
-func (bus *SysBus) Write(address uint16, v byte) {
+func (bus *sysBus) write(address uint16, v byte) {
 	if address < 0x2000 {
-		bus.RAM.Write(address, v)
+		bus.ram.write(address, v)
 		return
 	}
 
 	if address < 0x4000 {
-		bus.PPU.WritePort(address, v, bus.CPU)
+		bus.ppu.writePort(address, v, bus.cpu)
 		return
 	}
 
 	if address == 0x4014 {
-		bus.PPU.WritePort(address, v, bus.CPU)
+		bus.ppu.writePort(address, v, bus.cpu)
 		return
 	}
 
 	if address < 0x4014 || address == 0x4015 || address == 0x4017 {
-		bus.APU.WritePort(address, v)
+		bus.apu.writePort(address, v)
 		return
 	}
 
 	if address == 0x4016 {
-		bus.Ctrl1.Write(v)
+		bus.ctrl1.write(v)
+		bus.ctrl2.write(v)
 		return
 	}
 
@@ -120,22 +121,22 @@ func (bus *SysBus) Write(address uint16, v byte) {
 	}
 
 	if address <= 0xFFFF {
-		bus.Cartridge.Write(address, v)
+		bus.cartridge.write(address, v)
 		return
 		// bus.PrgROM[int(address-0x8000)%len(bus.PrgROM)] = v
 		// return
 	}
 }
 
-func (bus *SysBus) ReadAddress(address uint16) (value uint16, hi byte, lo byte) {
-	lo = bus.Read(address)
-	hi = bus.Read(address + 1)
+func (bus *sysBus) readAddress(address uint16) (value uint16, hi byte, lo byte) {
+	lo = bus.read(address)
+	hi = bus.read(address + 1)
 	return uint16(hi)<<8 | uint16(lo), hi, lo
 }
 
-func (bus *SysBus) WriteAddress(address uint16, v uint16) {
+func (bus *sysBus) writeAddress(address uint16, v uint16) {
 	lo := byte(v & 0x00FF)
 	hi := byte(v & 0xFF00 >> 8)
-	bus.Write(address, lo)
-	bus.Write(address+1, hi)
+	bus.write(address, lo)
+	bus.write(address+1, hi)
 }

@@ -34,13 +34,13 @@ func newPatternView(scale int, fontCache gui.FontMap) (*patternView, error) {
 func (v *patternView) Init(engine *engine, console *nes.Console) error {
 	v.gridList = gui.GridList{
 		List: []*gui.Grid{
-			&gui.Grid{Rows: 16 * 8, Cols: 32 * 8, Color: white64, UpdateFn: func(g *gui.Grid) { g.Bounds = *v.Rect }},
-			&gui.Grid{Rows: 16, Cols: 32, Color: white128, UpdateFn: func(g *gui.Grid) { g.Bounds = *v.Rect }},
-			&gui.Grid{Rows: 1, Cols: 2, Borders: true, Color: white, UpdateFn: func(g *gui.Grid) { g.Bounds = *v.Rect }},
+			&gui.Grid{Rows: 16 * 8, Cols: 32 * 8, Color: white64, UpdateFn: func(g *gui.Grid) { g.Bounds = v.Rect() }},
+			&gui.Grid{Rows: 16, Cols: 32, Color: white128, UpdateFn: func(g *gui.Grid) { g.Bounds = v.Rect() }},
+			&gui.Grid{Rows: 1, Cols: 2, Borders: true, Color: white, UpdateFn: func(g *gui.Grid) { g.Bounds = v.Rect() }},
 		},
 	}
 
-	font, ok := v.FontMap["RuneScape UF"]
+	font, ok := v.Font("RuneScape UF")
 	if !ok {
 		return fmt.Errorf("font %q not found", "RuneScape UF")
 	}
@@ -61,7 +61,7 @@ func (v *patternView) Init(engine *engine, console *nes.Console) error {
 			if len(r.RGBA8888) < 128*128*2*4 {
 				r.RGBA8888 = make([]byte, 128*128*2*4)
 			}
-			console.PPU.DrawPatternTables(r.RGBA8888, v.paletteNum)
+			console.DrawPatternTables(r.RGBA8888, v.paletteNum)
 		},
 	}
 
@@ -76,9 +76,13 @@ func (v *patternView) SetStatusMsg(m string) {
 	v.status.SetStatusMsg(m)
 }
 
-func (v *patternView) Handle(event sdl.Event, console *nes.Console) (handled bool, err error) {
-	if handled, err := v.View.Handle(event, console); handled || err != nil {
+func (v *patternView) Handle(event sdl.Event, engine *engine, console *nes.Console) (handled bool, err error) {
+	if handled, err := v.View.Handle(event); handled || err != nil {
 		return handled, err
+	}
+
+	if !v.Focused() {
+		return false, nil
 	}
 
 	switch evt := event.(type) {

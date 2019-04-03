@@ -56,7 +56,7 @@ func (m *Message) Update(v *View) {
 		m.UpdateFn(m)
 	}
 
-	m.viewRect = *v.Rect
+	m.viewRect = *v.rect
 }
 
 func (m *Message) Draw(v *View) error {
@@ -72,7 +72,7 @@ func (m *Message) Draw(v *View) error {
 	}
 	anchor(bgrect, m.Position, &m.viewRect, m.Margin)
 
-	if err := drawRect(v.Renderer, bgrect, m.Background); err != nil {
+	if err := drawRect(v.renderer, bgrect, m.Background); err != nil {
 		return fmt.Errorf("drawMessage: unable to draw background: %s", err)
 	}
 
@@ -87,7 +87,7 @@ func (m *Message) Draw(v *View) error {
 		Left:   m.Padding.Left + m.Margin.Left,
 	})
 
-	if _, _, err := v.Renderer.DrawText(m.Text, m.Font, m.Size, m.Align, m.Foreground, msgRect); err != nil {
+	if _, _, err := v.renderer.DrawText(m.Text, m.Font, m.Size, m.Align, m.Foreground, msgRect); err != nil {
 		return fmt.Errorf("drawMessage: unable to render message: %s", err)
 	}
 

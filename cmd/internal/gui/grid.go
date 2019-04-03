@@ -107,7 +107,7 @@ func (g *Grid) Draw(v *View) error {
 		return nil
 	}
 
-	if err := v.Renderer.SetDrawColor(g.Color.R, g.Color.G, g.Color.B, g.Color.A); err != nil {
+	if err := v.renderer.SetDrawColor(g.Color.R, g.Color.G, g.Color.B, g.Color.A); err != nil {
 		return fmt.Errorf("grid.draw: unable to set draw color: %s", err)
 	}
 
@@ -124,7 +124,7 @@ func (g *Grid) Draw(v *View) error {
 		y0 := g.Bounds.Y
 		y1 := y0 + g.Bounds.H
 
-		if err := v.Renderer.DrawLine(x0, y0, x1, y1); err != nil {
+		if err := v.renderer.DrawLine(x0, y0, x1, y1); err != nil {
 			return fmt.Errorf("grid.draw: unable to draw cols: %s", err)
 		}
 	}
@@ -139,7 +139,7 @@ func (g *Grid) Draw(v *View) error {
 		x1 := x0 + g.Bounds.W
 		y0 := mini32(g.Bounds.Y+g.Bounds.H, round32(vy+float32(i)*vh))
 		y1 := mini32(g.Bounds.Y+g.Bounds.H, y0)
-		if err := v.Renderer.DrawLine(x0, y0, x1, y1); err != nil {
+		if err := v.renderer.DrawLine(x0, y0, x1, y1); err != nil {
 			return fmt.Errorf("grid.draw: unable to draw rows: %s", err)
 		}
 	}

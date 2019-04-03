@@ -1,6 +1,7 @@
 package nes
 
 import (
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -18,14 +19,15 @@ const (
 )
 
 type Console struct {
-	Cartridge   *Cartridge
-	RAM         *RAM
-	CPU         *CPU
-	APU         *APU
-	PPU         *PPU
-	Controller1 *Controller
+	cartridge   *cartridge
+	ram         *ram
+	cpu         *cpu
+	apu         *apu
+	ppu         *ppu
+	controller1 *controller
+	controller2 *controller
 
-	bus *SysBus
+	bus *sysBus
 
 	openFiles []*os.File
 }
@@ -47,68 +49,97 @@ func NewConsole(pc uint16, debugOut io.Writer) *Console {
 		return f, nil
 	}
 
-	ram := NewRAM()
-	ctrl1 := &Controller{}
+	ram := newRam()
+	ctrl1 := &controller{}
+	ctrl2 := &controller{}
 
-	ppu := NewPPU()
-	apu := NewAPU(4096, 48000, makeFile) // TODO: parameterize sample rate
-	cpu := NewCPU(debugOut, ppu, apu)
+	ppu := newPpu()
+	apu := newApu(4096, 48000, makeFile) // TODO: parameterize sample rate
+	cpu := newCpu(debugOut, ppu, apu)
 
-	bus := &SysBus{
-		RAM:   ram,
-		CPU:   cpu,
-		APU:   apu,
-		PPU:   ppu,
-		Ctrl1: ctrl1,
+	bus := &sysBus{
+		ram:   ram,
+		cpu:   cpu,
+		apu:   apu,
+		ppu:   ppu,
+		ctrl1: ctrl1,
+		ctrl2: ctrl2,
 	}
 
 	if pc != 0 {
-		cpu.SetPC(pc)
+		cpu.setPC(pc)
 	}
-	cpu.Cycles = 7 //TODO
+	cpu.cycles = 7 //TODO
 
-	console.RAM = ram
-	console.CPU = cpu
-	console.APU = apu
-	console.PPU = ppu
-	console.Controller1 = ctrl1
+	console.ram = ram
+	console.cpu = cpu
+	console.apu = apu
+	console.ppu = ppu
+	console.controller1 = ctrl1
+	console.controller2 = ctrl2
 	console.bus = bus
 
 	return console
 }
 
 func (c *Console) Empty() bool {
-	return c.Cartridge == nil
+	return c.cartridge == nil
 }
 
-func (c *Console) Load(cartridge *Cartridge) {
-	first := c.Cartridge == nil
-	c.Cartridge = cartridge
-	c.bus.Cartridge = cartridge
-	c.PPU.Cartridge = cartridge
+func (c *Console) load(cartridge *cartridge) {
+	first := c.cartridge == nil
+	c.cartridge = cartridge
+	c.bus.cartridge = cartridge
+	c.ppu.cartridge = cartridge
 
 	if first {
-		c.CPU.Init(c.bus)
+		c.cpu.init(c.bus)
 		return
 	}
 
 	c.Reset()
 }
 
+func (c *Console) LoadPath(path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("unable to open rom: %s", err)
+	}
+	defer f.Close()
+
+	cart, err := loadRom(f)
+	if err != nil {
+		return err
+	}
+
+	c.load(cart)
+	return nil
+}
+
+func (c *Console) LoadRom(rom io.Reader) error {
+	cart, err := loadRom(rom)
+	if err != nil {
+		return err
+	}
+
+	c.load(cart)
+	return nil
+}
+
 func (c *Console) StartRecording() error {
-	return c.APU.mixer.startRecording()
+	return c.apu.mixer.startRecording()
 }
 
 func (c *Console) PauseRecording() {
-	c.APU.mixer.pauseRecording()
+	c.apu.mixer.pauseRecording()
 }
 
 func (c *Console) UnpauseRecording() {
-	c.APU.mixer.unpauseRecording()
+	c.apu.mixer.unpauseRecording()
 }
 
 func (c *Console) StopRecording() error {
-	return c.APU.mixer.stopRecording()
+	return c.apu.mixer.stopRecording()
 }
 
 func (c *Console) Close() error {
@@ -125,8 +156,8 @@ func (c *Console) Close() error {
 }
 
 func (c *Console) Reset() {
-	c.CPU.Reset(c.bus)
-	c.APU.Reset()
+	c.cpu.reset(c.bus)
+	c.apu.reset()
 }
 
 func (c *Console) StepFrame() {
@@ -134,21 +165,50 @@ func (c *Console) StepFrame() {
 		return
 	}
 
-	frame := c.PPU.Frame
-	for frame == c.PPU.Frame {
-		c.CPU.Execute(c.bus, c.PPU)
+	frame := c.ppu.frame
+	for frame == c.ppu.frame {
+		c.cpu.execute(c.bus)
 	}
-	// fmt.Println(c.PPU.bufferHead)
+}
+
+func (c *Console) Press(ctrl int, button Button) {
+	switch ctrl {
+	case 0:
+		c.controller1.press(button)
+	case 1:
+		c.controller2.press(button)
+	}
+}
+
+func (c *Console) Release(ctrl int, button Button) {
+	switch ctrl {
+	case 0:
+		c.controller1.release(button)
+	case 1:
+		c.controller2.release(button)
+	}
 }
 
 func (c *Console) Buffer() []byte {
-	return c.PPU.buffer
+	return c.ppu.buffer
+}
+
+func (c *Console) AudioChannel() <-chan float32 {
+	return c.apu.channel()
+}
+
+func (c *Console) DrawNametables(buf []byte) {
+	c.ppu.drawNametables(buf)
+}
+
+func (c *Console) DrawPatternTables(buf []byte, palette byte) {
+	c.ppu.drawPatternTables(buf, palette)
 }
 
 func (c *Console) Read(addr uint16) byte {
-	return c.bus.Read(addr)
+	return c.bus.read(addr)
 }
 
 func (c *Console) Write(addr uint16, v byte) {
-	c.bus.Write(addr, v)
+	c.bus.write(addr, v)
 }

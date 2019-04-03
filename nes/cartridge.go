@@ -23,30 +23,30 @@ const (
 )
 
 var (
-	INESMagic  = []byte{'N', 'E', 'S', 0x1A}
-	ErrNoMagic = errors.New("nes: invalid magic in header")
+	inesMagic  = []byte{'N', 'E', 'S', 0x1A}
+	errNoMagic = errors.New("nes: invalid magic in header")
 )
 
-type MirrorMode int
+type mirrorMode int
 
 const (
-	Horizontal MirrorMode = iota
-	Vertical
-	Quad
+	horizontal mirrorMode = iota
+	vertical
+	quad
 )
 
-type Cartridge struct {
-	MirrorMode MirrorMode
-	SaveRAM    bool //TODO
-	FourScreen bool
-	Mapper     byte
+type cartridge struct {
+	mirrorMode mirrorMode
+	saveRAM    bool //TODO
+	fourScreen bool
+	mapper     byte
 
-	Trainer []byte
-	PRG     []byte
-	CHR     []byte
+	trainer []byte
+	prg     []byte
+	chr     []byte
 }
 
-func LoadINES(r io.Reader) (*Cartridge, error) {
+func loadRom(r io.Reader) (*cartridge, error) {
 	type header struct {
 		// String "NES^Z" used to recognize .NES files.
 		Magic [4]byte
@@ -92,8 +92,8 @@ func LoadINES(r io.Reader) (*Cartridge, error) {
 		return nil, fmt.Errorf("nes: unable to read header: %s", err)
 	}
 
-	if !bytes.Equal(h.Magic[:], INESMagic) {
-		return nil, ErrNoMagic
+	if !bytes.Equal(h.Magic[:], inesMagic) {
+		return nil, errNoMagic
 	}
 
 	var trainer []byte
@@ -119,38 +119,38 @@ func LoadINES(r io.Reader) (*Cartridge, error) {
 		}
 	}
 
-	mirrorMode := Horizontal
+	mirrorMode := horizontal
 	if h.ROMControl1&rc1MirrorModeVertical > 0 {
-		mirrorMode = Vertical
+		mirrorMode = vertical
 	}
 
 	fourScreen := h.ROMControl1&rc1FourScreen > 0
 	if fourScreen {
-		mirrorMode = Quad
+		mirrorMode = quad
 	}
 
 	saveRAM := h.ROMControl1&rc1SaveRAM > 0
 
 	mapper := h.ROMControl1>>4 | (h.ROMControl2 & 0xF0)
 
-	return &Cartridge{
-		MirrorMode: mirrorMode,
-		SaveRAM:    saveRAM,
-		Trainer:    trainer,
-		FourScreen: fourScreen,
-		Mapper:     mapper,
-		PRG:        prg,
-		CHR:        chr,
+	return &cartridge{
+		mirrorMode: mirrorMode,
+		saveRAM:    saveRAM,
+		trainer:    trainer,
+		fourScreen: fourScreen,
+		mapper:     mapper,
+		prg:        prg,
+		chr:        chr,
 	}, nil
 }
 
-func (c *Cartridge) Read(address uint16) byte {
+func (c *cartridge) read(address uint16) byte {
 	switch {
 	case address < 0x2000:
 		// fmt.Printf("%04X\n", address)
-		return c.CHR[address]
+		return c.chr[address]
 	case address >= 0x8000:
-		return c.PRG[int(address-0x8000)%len(c.PRG)]
+		return c.prg[int(address-0x8000)%len(c.prg)]
 	case address >= 0x6000:
 		// TODO: SRAM
 	default:
@@ -160,7 +160,7 @@ func (c *Cartridge) Read(address uint16) byte {
 
 }
 
-func (c *Cartridge) Write(address uint16, value byte) {
+func (c *cartridge) write(address uint16, value byte) {
 	switch {
 	case address < 0x2000:
 		// c.CHR[address] = value

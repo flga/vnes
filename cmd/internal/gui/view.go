@@ -6,13 +6,12 @@ import (
 	"math"
 
 	"github.com/flga/nes/cmd/internal/errors"
-	"github.com/flga/nes/nes"
 
 	"github.com/veandco/go-sdl2/sdl"
 )
 
 type View struct {
-	ID    uint32
+	id    uint32
 	title string
 
 	width  int32
@@ -22,16 +21,12 @@ type View struct {
 	focused    bool
 	visible    bool
 	fullscreen bool
-	vsync      bool
-	// FlashMsg  string
-	// FlashTTL  time.Time
-	// StatusMsg string
 
 	window   *sdl.Window
-	Renderer *Renderer
-	Rect     *sdl.Rect
+	renderer *Renderer
+	rect     *sdl.Rect
 
-	FontMap FontMap
+	fontMap FontMap
 }
 
 func NewView(title string, w, h, scale int, windowOptions, rendererOptions uint32, blendMode sdl.BlendMode, fontCache FontMap) (*View, error) {
@@ -43,7 +38,6 @@ func NewView(title string, w, h, scale int, windowOptions, rendererOptions uint3
 		focused:    windowOptions&sdl.WINDOW_INPUT_FOCUS > 0,
 		visible:    windowOptions&sdl.WINDOW_SHOWN > 0,
 		fullscreen: windowOptions&sdl.WINDOW_FULLSCREEN > 0 || windowOptions&sdl.WINDOW_FULLSCREEN_DESKTOP > 0,
-		vsync:      rendererOptions&sdl.RENDERER_PRESENTVSYNC > 0,
 	}
 
 	window, err := sdl.CreateWindow(title, sdl.WINDOWPOS_CENTERED, sdl.WINDOWPOS_CENTERED, int32(w*scale), int32(h*scale), windowOptions)
@@ -65,16 +59,16 @@ func NewView(title string, w, h, scale int, windowOptions, rendererOptions uint3
 		return nil, v.Errorf("unable to get window id: %s", err)
 	}
 
-	v.ID = id
+	v.id = id
 	v.window = window
-	v.Renderer = renderer
-	v.Rect = &sdl.Rect{
+	v.renderer = renderer
+	v.rect = &sdl.Rect{
 		X: 0,
 		Y: 0,
 		W: int32(w * scale),
 		H: int32(h * scale),
 	}
-	v.FontMap = fontCache
+	v.fontMap = fontCache
 
 	return v, nil
 }
@@ -95,7 +89,15 @@ func (v *View) Errorf(format string, args ...interface{}) error {
 }
 
 func (v *View) Destroy() error {
-	return errors.NewList(v.Renderer.Destroy(), v.window.Destroy())
+	return errors.NewList(v.renderer.Destroy(), v.window.Destroy())
+}
+
+func (v *View) ID() uint32 {
+	return v.id
+}
+
+func (v *View) Title() string {
+	return v.title
 }
 
 func (v *View) Focused() bool {
@@ -108,10 +110,6 @@ func (v *View) Visible() bool {
 
 func (v *View) Fullscreen() bool {
 	return v.fullscreen
-}
-
-func (v *View) VSync() bool {
-	return v.vsync
 }
 
 func (v *View) Raise() {
@@ -145,6 +143,80 @@ func (v *View) Toggle() {
 	}
 }
 
+func (v *View) Font(face string) (*Font, bool) {
+	f, ok := v.fontMap[face]
+	return f, ok
+}
+
+func (v *View) Handle(event sdl.Event) (handled bool, err error) {
+	switch evt := event.(type) {
+
+	case *sdl.WindowEvent:
+		if evt.Event == sdl.WINDOWEVENT_FOCUS_GAINED {
+			v.focused = true
+			return true, nil
+		}
+
+		if evt.Event == sdl.WINDOWEVENT_FOCUS_LOST {
+			v.focused = false
+			return true, nil
+		}
+
+		if evt.Event == sdl.WINDOWEVENT_CLOSE {
+			v.Hide()
+			return true, nil
+		}
+
+		if evt.Event == sdl.WINDOWEVENT_SIZE_CHANGED {
+			v.resize()
+			return true, nil
+		}
+
+	case *sdl.KeyboardEvent:
+		if evt.Type == sdl.KEYDOWN && evt.Repeat == 0 && evt.Keysym.Sym == sdl.K_F11 {
+			return true, v.ToggleFullscreen()
+		}
+	}
+
+	return false, nil
+}
+
+func (v *View) ToggleFullscreen() error {
+	if v.fullscreen {
+		v.fullscreen = false
+		if _, err := sdl.ShowCursor(1); err != nil {
+			return err
+		}
+		return v.window.SetFullscreen(0)
+	}
+
+	v.fullscreen = true
+	if _, err := sdl.ShowCursor(0); err != nil {
+		return err
+	}
+	return v.window.SetFullscreen(sdl.WINDOW_FULLSCREEN_DESKTOP)
+}
+
+func (v *View) Clear(c color.RGBA) error {
+	if err := v.renderer.SetDrawColor(c.R, c.G, c.B, c.A); err != nil {
+		return v.Errorf("unable to set draw color: %s", err)
+	}
+
+	if err := v.renderer.Clear(); err != nil {
+		return v.Errorf("unable to clear renderer: %s", err)
+	}
+
+	return nil
+}
+
+func (v *View) Paint() {
+	v.renderer.Present()
+}
+
+func (v *View) Rect() sdl.Rect {
+	return *v.rect
+}
+
 func (v *View) resize() {
 	minHeight := float64(v.height)
 	minWidth := float64(v.width)
@@ -172,82 +244,8 @@ func (v *View) resize() {
 		y = (origH - height) / 2
 	}
 
-	v.Rect.W = int32(width)
-	v.Rect.H = int32(height)
-	v.Rect.X = int32(x)
-	v.Rect.Y = int32(y)
-}
-
-func (v *View) Handle(event sdl.Event, console *nes.Console) (handled bool, err error) {
-	switch evt := event.(type) {
-
-	case *sdl.WindowEvent:
-		if evt.Event == sdl.WINDOWEVENT_FOCUS_GAINED {
-			v.focused = true
-			return true, nil
-		}
-
-		if evt.Event == sdl.WINDOWEVENT_FOCUS_LOST {
-			v.focused = false
-			return true, nil
-		}
-
-		if evt.Event == sdl.WINDOWEVENT_CLOSE {
-			v.Hide()
-			return true, nil
-		}
-
-		if evt.Event == sdl.WINDOWEVENT_SIZE_CHANGED {
-			v.resize()
-			return true, nil
-		}
-
-	case *sdl.KeyboardEvent:
-		if evt.Type == sdl.KEYUP && evt.Keysym.Sym == sdl.K_F11 {
-			return true, v.ToggleFullscreen()
-		}
-	}
-
-	return false, nil
-}
-
-func (v *View) ToggleFullscreen() error {
-	if v.fullscreen {
-		v.fullscreen = false
-		if _, err := sdl.ShowCursor(1); err != nil {
-			return err
-		}
-		return v.window.SetFullscreen(0)
-	}
-
-	v.fullscreen = true
-	if _, err := sdl.ShowCursor(0); err != nil {
-		return err
-	}
-	return v.window.SetFullscreen(sdl.WINDOW_FULLSCREEN_DESKTOP)
-}
-
-func (v *View) ToggleVSync() error {
-	v.vsync = !v.vsync
-	if v.vsync {
-		return sdl.GLSetSwapInterval(1)
-	}
-
-	return sdl.GLSetSwapInterval(0)
-}
-
-func (v *View) Clear(c color.RGBA) error {
-	if err := v.Renderer.SetDrawColor(c.R, c.G, c.B, c.A); err != nil {
-		return v.Errorf("unable to set draw color: %s", err)
-	}
-
-	if err := v.Renderer.Clear(); err != nil {
-		return v.Errorf("unable to clear renderer: %s", err)
-	}
-
-	return nil
-}
-
-func (v *View) Paint() {
-	v.Renderer.Present()
+	v.rect.W = int32(width)
+	v.rect.H = int32(height)
+	v.rect.X = int32(x)
+	v.rect.Y = int32(y)
 }

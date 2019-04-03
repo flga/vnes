@@ -431,7 +431,7 @@ func (n *noise) sample() byte {
 	return 0
 }
 
-type APU struct {
+type apu struct {
 	seqResetDelay int8
 	pulse0        *pulse
 	pulse1        *pulse
@@ -448,8 +448,8 @@ type APU struct {
 	mixer *mixer
 }
 
-func NewAPU(bufferSize int, freq float32, makeFile func(channel string) (io.WriteSeeker, error)) *APU {
-	return &APU{
+func newApu(bufferSize int, freq float32, makeFile func(channel string) (io.WriteSeeker, error)) *apu {
+	return &apu{
 		pulse0: &pulse{
 			channel:       0,
 			lengthEnabled: true,
@@ -469,11 +469,11 @@ func NewAPU(bufferSize int, freq float32, makeFile func(channel string) (io.Writ
 	}
 }
 
-func (a *APU) Channel() <-chan float32 {
+func (a *apu) channel() <-chan float32 {
 	return a.mixer.Output
 }
 
-func (a *APU) ReadPort(addr uint16) byte {
+func (a *apu) readPort(addr uint16) byte {
 	switch addr {
 	case 0x4015: // IF-D NT21
 		ret := byte(0)
@@ -505,7 +505,7 @@ func (a *APU) ReadPort(addr uint16) byte {
 	return 0
 }
 
-func (a *APU) WritePort(addr uint16, v byte) {
+func (a *apu) writePort(addr uint16, v byte) {
 	switch addr {
 	case 0x4000, 0x4001, 0x4002, 0x4003:
 		a.pulse0.writePort(addr, v)
@@ -534,7 +534,7 @@ func (a *APU) WritePort(addr uint16, v byte) {
 			a.seqResetDelay = 0
 		}
 		// a.sequencerCounter = 0 // see: http://wiki.nesdev.com/w/index.php/APU_Frame_Counter
-		// for example, this will be 3728.5 APU cycles, or 7457 CPU cycles.
+		// for example, this will be 3728.5 apu cycles, or 7457 CPU cycles.
 		// It might be easier to work in CPU cycles so you don't have to deal with
 		// half cycles.
 
@@ -549,13 +549,13 @@ func (a *APU) WritePort(addr uint16, v byte) {
 	}
 }
 
-func (a *APU) clockFC(c *CPU) {
+func (a *apu) clockFC(c *cpu) {
 	switch a.sequencerMode {
 	case 0:
 		switch a.sequencerCounter {
 		case 0:
 			if a.irqEnabled {
-				c.Trigger(IRQ)
+				c.trigger(irq)
 				a.irqPending = true
 			}
 		case 7457:
@@ -567,14 +567,14 @@ func (a *APU) clockFC(c *CPU) {
 			a.clockQuarterFrame()
 		case 29828:
 			if a.irqEnabled {
-				c.Trigger(IRQ)
+				c.trigger(irq)
 				a.irqPending = true
 			}
 		case 29829:
 			a.clockQuarterFrame()
 			a.clockHalfFrame()
 			if a.irqEnabled {
-				c.Trigger(IRQ)
+				c.trigger(irq)
 				a.irqPending = true
 			}
 		}
@@ -607,14 +607,14 @@ func (a *APU) clockFC(c *CPU) {
 
 }
 
-func (a *APU) clockQuarterFrame() {
+func (a *apu) clockQuarterFrame() {
 	a.pulse0.clockEnvelope()
 	a.pulse1.clockEnvelope()
 	a.triangle.clockLinear()
 	a.noise.clockEnvelope()
 }
 
-func (a *APU) clockHalfFrame() {
+func (a *apu) clockHalfFrame() {
 	a.pulse0.clockSweep()
 	a.pulse0.clockLengthCounter()
 
@@ -626,14 +626,14 @@ func (a *APU) clockHalfFrame() {
 	a.noise.clockLengthCounter()
 }
 
-func (a *APU) Clock(c *CPU) {
+func (a *apu) clock(c *cpu) {
 	if a.seqResetDelay > 0 {
 		a.seqResetDelay--
 	} else if a.seqResetDelay == 0 {
 		a.sequencerCounter = 0
 		a.seqResetDelay = -1
 	}
-	if c.Cycles&1 == 1 {
+	if c.cycles&1 == 1 {
 		a.pulse0.clockFreq()
 		a.pulse1.clockFreq()
 		a.noise.clockFreq()
@@ -652,9 +652,9 @@ func (a *APU) Clock(c *CPU) {
 
 }
 
-func (a *APU) Reset() {
-	a.WritePort(0x4015, 0)
-	a.WritePort(0x4017, a.last4017Write)
+func (a *apu) reset() {
+	a.writePort(0x4015, 0)
+	a.writePort(0x4017, a.last4017Write)
 }
 
 type mixer struct {
@@ -824,6 +824,7 @@ func (c *channel) startRecording() error {
 		err = c.createEncoder()
 	}
 	c.recording = true
+	c.paused = false
 	return err
 }
 

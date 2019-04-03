@@ -15,25 +15,26 @@ import (
 
 var errQuit = errors.New("quit requested")
 
-var speedTable = map[sdl.Keycode]time.Duration{
-	sdl.K_1: time.Second / 1,
-	sdl.K_2: time.Second / 2,
-	sdl.K_3: time.Second / 4,
-	sdl.K_4: time.Second / 10,
-	sdl.K_5: time.Second / 30,
-	sdl.K_6: time.Second / 60,
-	sdl.K_7: time.Second / 80,
-	sdl.K_8: time.Second / 120,
-	sdl.K_9: time.Second / 144,
-}
-
-type handler interface {
-	Handle(event sdl.Event, console *nes.Console) (handled bool, err error)
-	Destroy() error
+type view interface {
+	Title() string
 	Init(*engine, *nes.Console) error
+	Destroy() error
 	Visible() bool
+	Handle(event sdl.Event, engine *engine, console *nes.Console) (handled bool, err error)
 	Update(*nes.Console, *engine)
 	Render() error
+}
+
+type controllers []*sdl.GameController
+
+func (c controllers) which(id sdl.JoystickID) int {
+	for i, ctrl := range c {
+		if ctrl.Joystick().InstanceID() == id {
+			return i
+		}
+	}
+
+	return 0
 }
 
 type engine struct {
@@ -41,9 +42,6 @@ type engine struct {
 
 	paused bool
 
-	// ticker       *time.Ticker
-	ticker       *time.Ticker
-	tickerChan   <-chan time.Time
 	fpsMeter     *meter.Meter
 	paintMeter   *meter.Meter
 	consoleMeter *meter.Meter
@@ -52,8 +50,9 @@ type engine struct {
 	patternView   *patternView
 	nametableView *nametableView
 
-	viewsById   map[uint32]handler
-	controllers []*sdl.GameController
+	// viewsById   map[uint32]handler
+	views       []view
+	controllers controllers
 }
 
 func newEngine(title string, zoom int, audio *audioEngine, fontCache gui.FontMap) (*engine, error) {
@@ -82,48 +81,41 @@ func newEngine(title string, zoom int, audio *audioEngine, fontCache gui.FontMap
 	e.mainView = gameView
 	e.patternView = patternView
 	e.nametableView = nametableView
-	e.viewsById = map[uint32]handler{
-		gameView.ID:      gameView,
-		patternView.ID:   patternView,
-		nametableView.ID: nametableView,
+	e.views = []view{
+		gameView,
+		patternView,
+		nametableView,
 	}
 
 	return e, nil
 }
 
 func (e *engine) run(ctx context.Context, console *nes.Console) error {
-	for _, v := range e.viewsById {
+	for _, v := range e.views {
 		if err := v.Init(e, console); err != nil {
-			return err
+			return fmt.Errorf("engine: run: unable to init view %s: %s", v.Title(), err)
 		}
+
+		defer v.Destroy()
 	}
 
-	ticker := time.NewTicker(time.Second / 60)
-	defer ticker.Stop()
+	if err := e.audio.play(); err != nil {
+		return fmt.Errorf("engine: run: unable to start audio")
+	}
 
-	e.ticker = ticker
-	e.tickerChan = ticker.C
-
-	e.audio.play()
-
-	defer func() {
-		for _, w := range e.viewsById {
-			w.Destroy()
-		}
-	}()
-	defer func() {
-		fmt.Println("done")
-	}()
+	defer fmt.Println("engine: run: done")
 
 	start := time.Now()
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-			// case <-e.tickerChan:
 		default:
 			if err := e.poll(console); err != nil {
-				return err
+				if err == errQuit {
+					return err
+				}
+				return fmt.Errorf("engine: poll: %s", err)
 			}
 
 			if !e.mainView.Visible() {
@@ -147,13 +139,49 @@ func (e *engine) run(ctx context.Context, console *nes.Console) error {
 	return nil
 }
 
-func (e *engine) changeFramerate(d time.Duration, console *nes.Console) {
-	e.ticker.Stop()
-	e.ticker = time.NewTicker(d)
-	e.tickerChan = e.ticker.C
-	e.fpsMeter.Reset()
-	e.mainView.SetFlashMsg(fmt.Sprintf("%d fps", int(1/d.Seconds())))
-	// TODO: update apu sample rate
+func (e *engine) poll(console *nes.Console) error {
+	for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
+		switch evt := event.(type) {
+
+		case *sdl.QuitEvent:
+			return errQuit
+
+		case *sdl.ControllerDeviceEvent:
+			for _, ctrl := range e.controllers {
+				ctrl.Close()
+			}
+			e.controllers = e.controllers[:0]
+
+			for i := 0; i < sdl.NumJoysticks(); i++ {
+				ctrl := sdl.GameControllerOpen(i)
+				e.controllers = append(e.controllers, ctrl)
+			}
+
+			return nil
+
+		case *sdl.KeyboardEvent:
+			if isKeyPress(evt, sdl.K_SPACE) {
+				return e.pauseUnpause()
+			}
+
+			if isKeyPress(evt, sdl.K_F1) {
+				e.patternView.Toggle()
+				return nil
+			}
+
+			if isKeyPress(evt, sdl.K_F2) {
+				e.nametableView.Toggle()
+				return nil
+			}
+
+			return e.dispatch(evt, console)
+
+		default:
+			return e.dispatch(evt, console)
+		}
+	}
+
+	return nil
 }
 
 func (e *engine) pauseUnpause() error {
@@ -174,103 +202,26 @@ func (e *engine) pauseUnpause() error {
 	return nil
 }
 
-func (e *engine) poll(console *nes.Console) error {
-	for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
-		switch evt := event.(type) {
-		case *sdl.QuitEvent:
-			fmt.Println("quit")
-			return errQuit
-
-		case *sdl.DropEvent:
-			if evt.File == "" {
-				continue
-			}
-
-			cartridge, err := loadRom(evt.File)
-			if err != nil {
-				return err
-			}
-			console.Load(cartridge)
-
-		case *sdl.ControllerDeviceEvent:
-			e.onControllersChanged(evt)
-
-		case *sdl.KeyboardEvent:
-			if err := e.onKeyboarEvent(evt, console); err != nil {
-				return err
-			}
-		case *sdl.WindowEvent:
-			e.viewsById[evt.WindowID].Handle(evt, console)
-		case *sdl.TextEditingEvent:
-			e.viewsById[evt.WindowID].Handle(evt, console)
-		case *sdl.TextInputEvent:
-			e.viewsById[evt.WindowID].Handle(evt, console)
-		case *sdl.MouseMotionEvent:
-			e.viewsById[evt.WindowID].Handle(evt, console)
-		case *sdl.MouseButtonEvent:
-			e.viewsById[evt.WindowID].Handle(evt, console)
-		case *sdl.MouseWheelEvent:
-			e.viewsById[evt.WindowID].Handle(evt, console)
-		case *sdl.UserEvent:
-			e.viewsById[evt.WindowID].Handle(evt, console)
-		default:
-			for _, w := range e.viewsById {
-				_, err := w.Handle(evt, console)
-				if err != nil {
-					return err
-				}
-			}
+func (e *engine) dispatch(evt sdl.Event, console *nes.Console) error {
+	for _, v := range e.views {
+		if handled, err := v.Handle(evt, e, console); handled {
+			return err
 		}
 	}
 
 	return nil
 }
 
-func (e *engine) onControllersChanged(*sdl.ControllerDeviceEvent) {
-	for _, ctrl := range e.controllers {
-		ctrl.Close()
-	}
-	e.controllers = e.controllers[:0]
-
-	for i := 0; i < sdl.NumJoysticks(); i++ {
-		e.controllers = append(e.controllers, sdl.GameControllerOpen(i))
-	}
-}
-
-func (e *engine) onKeyboarEvent(evt *sdl.KeyboardEvent, console *nes.Console) error {
-	if entry, ok := speedTable[evt.Keysym.Sym]; evt.Type == sdl.KEYUP && ok {
-		e.changeFramerate(entry, console)
-		return nil
-	}
-
-	if evt.Type == sdl.KEYUP && evt.Keysym.Sym == sdl.K_SPACE {
-		return e.pauseUnpause()
-	}
-
-	if evt.Type == sdl.KEYUP && evt.Keysym.Sym == sdl.K_F1 {
-		e.patternView.Toggle()
-		return nil
-	}
-
-	if evt.Type == sdl.KEYUP && evt.Keysym.Sym == sdl.K_F2 {
-		e.nametableView.Toggle()
-		return nil
-	}
-
-	_, err := e.viewsById[evt.WindowID].Handle(evt, console)
-	return err
-}
-
 func (e *engine) render(console *nes.Console) error {
 	paintStart := time.Now()
-	for _, w := range e.viewsById {
-		if !w.Visible() {
+	for _, v := range e.views {
+		if !v.Visible() {
 			continue
 		}
 
-		w.Update(console, e)
+		v.Update(console, e)
 
-		if err := w.Render(); err != nil {
+		if err := v.Render(); err != nil {
 			return err
 		}
 	}

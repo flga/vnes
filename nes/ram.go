@@ -2,20 +2,20 @@ package nes
 
 const ramSize = 2048
 
-type RAM struct {
+type ram struct {
 	data []byte
 }
 
-func NewRAM() *RAM {
-	return &RAM{
+func newRam() *ram {
+	return &ram{
 		data: make([]byte, ramSize),
 	}
 }
 
-func (r *RAM) Read(address uint16) byte {
+func (r *ram) read(address uint16) byte {
 	return r.data[address%ramSize]
 }
 
-func (r *RAM) Write(address uint16, value byte) {
+func (r *ram) write(address uint16, value byte) {
 	r.data[address%ramSize] = value
 }

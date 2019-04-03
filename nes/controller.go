@@ -13,13 +13,13 @@ const (
 	Right
 )
 
-type Controller struct {
+type controller struct {
 	buttons [8]Button
 	head    byte
 	strobe  byte
 }
 
-func (c *Controller) Read() Button {
+func (c *controller) read() Button {
 	var value Button
 	if c.head < 8 {
 		value = c.buttons[c.head]
@@ -33,17 +33,17 @@ func (c *Controller) Read() Button {
 	return value
 }
 
-func (c *Controller) Write(value byte) {
+func (c *controller) write(value byte) {
 	c.strobe = value
 	if c.strobe&1 == 1 {
 		c.head = 0
 	}
 }
 
-func (c *Controller) Press(button Button) {
+func (c *controller) press(button Button) {
 	c.buttons[button] = 1
 }
 
-func (c *Controller) Release(button Button) {
+func (c *controller) release(button Button) {
 	c.buttons[button] = 0
 }
