@@ -119,15 +119,67 @@ func (v *gameView) Init(engine *engine, console *nes.Console) error {
 			},
 		},
 		&gui.Message{
+			Tag:      "info",
+			Disabled: true,
+			UpdateFn: func(m *gui.Message) {
+				renderer, wm := v.Info()
+				m.Text = fmt.Sprintf(`Graphics
+renderer: %s
+sdl version: %d.%d.%d
+vsync: on
+
+Audio
+audio device: %s
+audio api: %s
+sample rate: %.f
+frames per buffer: %d
+channels: %d
+latency: %v
+
+State
+paused: %v
+recording: %v
+recording paused: %v
+
+Timings
+update: %.fms
+render: %.fms
+paint: %.fms
+poll: %.fms
+console: %.fms`,
+					renderer.Name,
+					wm.Version.Major,
+					wm.Version.Minor,
+					wm.Version.Patch,
+					engine.audio.streamParams.Output.Device.Name,
+					engine.audio.streamParams.Output.Device.HostApi.Name,
+					engine.audio.streamParams.SampleRate,
+					engine.audio.streamParams.FramesPerBuffer,
+					engine.audio.streamParams.Output.Channels,
+					engine.audio.streamParams.Output.Latency,
+					engine.paused,
+					v.recording,
+					v.pauseRecording,
+					engine.updateMeter.Ms(),
+					engine.renderMeter.Ms(),
+					engine.paintMeter.Ms(),
+					engine.pollMeter.Ms(),
+					engine.consoleMeter.Ms(),
+				)
+			},
+			Font:       font,
+			Size:       32,
+			Padding:    gui.Padding{Top: 10, Right: 10, Bottom: 10, Left: 10},
+			Margin:     gui.Margin{Top: 10, Left: 10},
+			Position:   gui.Top | gui.Left,
+			Foreground: white,
+			Background: black128,
+		},
+		&gui.Message{
 			Tag:      "fps",
 			Disabled: false,
 			UpdateFn: func(m *gui.Message) {
-				m.Text = fmt.Sprintf(
-					"%.fms - %.fms, %d fps",
-					engine.paintMeter.Ms(),
-					engine.consoleMeter.Ms(),
-					engine.fpsMeter.Tps(),
-				)
+				m.Text = fmt.Sprintf("%d fps", engine.fpsMeter.Tps())
 			},
 			Font:       font,
 			Size:       16,
@@ -407,6 +459,10 @@ func (v *gameView) Handle(evt sdl.Event, engine *engine, console *nes.Console) (
 		return handled, err
 	}
 
+	if evt, ok := gui.IsDropEvent(evt, sdl.DROPFILE, v.ID()); ok {
+		return true, console.LoadPath(evt.File)
+	}
+
 	if !v.Focused() {
 		return false, nil
 	}
@@ -430,27 +486,32 @@ func (v *gameView) handleGuiEvts(evt sdl.Event, engine *engine) (bool, error) {
 		return false, errors.New("unable to find menu component")
 	}
 
-	if isButtonPress(evt, sdl.CONTROLLER_BUTTON_Y) || isKeyPress(evt, sdl.K_ESCAPE) {
+	if gui.IsButtonPress(evt, sdl.CONTROLLER_BUTTON_Y) || gui.IsKeyPress(evt, sdl.K_ESCAPE) {
 		menu.Toggle()
 		return true, engine.pauseUnpause()
 	}
 
 	if menu.Enabled() {
-		if isButtonPress(evt, sdl.CONTROLLER_BUTTON_A) || isKeyPress(evt, sdl.K_RETURN) {
+		if gui.IsButtonPress(evt, sdl.CONTROLLER_BUTTON_A) || gui.IsKeyPress(evt, sdl.K_RETURN) {
 			return true, menu.Activate()
 		}
-		if isButtonPress(evt, sdl.CONTROLLER_BUTTON_DPAD_UP) || isKeyPress(evt, sdl.K_UP) {
+		if gui.IsButtonPress(evt, sdl.CONTROLLER_BUTTON_DPAD_UP) || gui.IsKeyPress(evt, sdl.K_UP) {
 			menu.Up()
 			return true, nil
 		}
-		if isButtonPress(evt, sdl.CONTROLLER_BUTTON_DPAD_DOWN) || isKeyPress(evt, sdl.K_DOWN) {
+		if gui.IsButtonPress(evt, sdl.CONTROLLER_BUTTON_DPAD_DOWN) || gui.IsKeyPress(evt, sdl.K_DOWN) {
 			menu.Down()
 			return true, nil
 		}
 	}
 
-	if isKeyPress(evt, sdl.K_g) {
+	if gui.IsKeyPress(evt, sdl.K_g) {
 		v.layers.Find("grid").Toggle()
+		return true, nil
+	}
+
+	if gui.IsKeyPress(evt, sdl.K_h) {
+		v.layers.Find("info").Toggle()
 		return true, nil
 	}
 
@@ -458,7 +519,7 @@ func (v *gameView) handleGuiEvts(evt sdl.Event, engine *engine) (bool, error) {
 }
 
 func (v *gameView) handleMediaEvts(evt sdl.Event, console *nes.Console) (bool, error) {
-	if isKeyPress(evt, sdl.K_o) {
+	if gui.IsKeyPress(evt, sdl.K_o) {
 		v.recording = !v.recording
 		v.pauseRecording = false
 		if v.recording {
@@ -468,7 +529,7 @@ func (v *gameView) handleMediaEvts(evt sdl.Event, console *nes.Console) (bool, e
 		return true, console.StopRecording()
 	}
 
-	if isKeyPress(evt, sdl.K_o, sdl.KMOD_SHIFT) {
+	if gui.IsKeyPress(evt, sdl.K_o, sdl.KMOD_SHIFT) {
 		if !v.recording {
 			return true, nil
 		}
@@ -494,11 +555,7 @@ func (v *gameView) handleConsoleEvts(evt sdl.Event, engine *engine, console *nes
 		}
 	}
 
-	if evt, ok := isDropEvent(evt, sdl.DROPFILE, v.ID()); ok {
-		return true, console.LoadPath(evt.File)
-	}
-
-	if isButtonPress(evt, sdl.CONTROLLER_BUTTON_X) || isKeyPress(evt, sdl.K_r) {
+	if gui.IsButtonPress(evt, sdl.CONTROLLER_BUTTON_X) || gui.IsKeyPress(evt, sdl.K_r) {
 		console.Reset()
 		return true, nil
 	}
@@ -537,7 +594,6 @@ func (v *gameView) Render() error {
 		return v.Errorf("render: unable to draw: %s", err)
 	}
 
-	v.Paint()
 	return nil
 }
 

@@ -1,10 +1,10 @@
-package main
+package gui
 
 import (
 	"github.com/veandco/go-sdl2/sdl"
 )
 
-func isKeyboardEvent(e sdl.Event, typ uint32, repeat int, sym sdl.Keycode, mods ...sdl.Keymod) (*sdl.KeyboardEvent, bool) {
+func IsKeyboardEvent(e sdl.Event, typ uint32, repeat int, sym sdl.Keycode, mods ...sdl.Keymod) (*sdl.KeyboardEvent, bool) {
 	evt, ok := e.(*sdl.KeyboardEvent)
 	if !ok {
 		return nil, false
@@ -53,22 +53,22 @@ func isKeyboardEvent(e sdl.Event, typ uint32, repeat int, sym sdl.Keycode, mods 
 	return evt, true
 }
 
-func isKeyPress(evt sdl.Event, sym sdl.Keycode, mod ...sdl.Keymod) bool {
-	_, v := isKeyboardEvent(evt, sdl.KEYDOWN, 0, sym, mod...)
+func IsKeyPress(evt sdl.Event, sym sdl.Keycode, mod ...sdl.Keymod) bool {
+	_, v := IsKeyboardEvent(evt, sdl.KEYDOWN, 0, sym, mod...)
 	return v
 }
 
-func isKeyDown(evt sdl.Event, sym sdl.Keycode, mod ...sdl.Keymod) bool {
-	_, v := isKeyboardEvent(evt, sdl.KEYDOWN, -1, sym, mod...)
+func IsKeyDown(evt sdl.Event, sym sdl.Keycode, mod ...sdl.Keymod) bool {
+	_, v := IsKeyboardEvent(evt, sdl.KEYDOWN, -1, sym, mod...)
 	return v
 }
 
-func isKeyUp(evt sdl.Event, sym sdl.Keycode, mod ...sdl.Keymod) bool {
-	_, v := isKeyboardEvent(evt, sdl.KEYUP, 0, sym, mod...)
+func IsKeyUp(evt sdl.Event, sym sdl.Keycode, mod ...sdl.Keymod) bool {
+	_, v := IsKeyboardEvent(evt, sdl.KEYUP, 0, sym, mod...)
 	return v
 }
 
-func isControllerEvent(e sdl.Event, typ uint32, btn sdl.GameControllerButton) (*sdl.ControllerButtonEvent, bool) {
+func IsControllerEvent(e sdl.Event, typ uint32, btn sdl.GameControllerButton) (*sdl.ControllerButtonEvent, bool) {
 	evt, ok := e.(*sdl.ControllerButtonEvent)
 	if !ok {
 		return nil, false
@@ -85,17 +85,17 @@ func isControllerEvent(e sdl.Event, typ uint32, btn sdl.GameControllerButton) (*
 	return evt, true
 }
 
-func isButtonPress(e sdl.Event, btn sdl.GameControllerButton) bool {
-	_, v := isControllerEvent(e, sdl.CONTROLLERBUTTONDOWN, btn)
+func IsButtonPress(e sdl.Event, btn sdl.GameControllerButton) bool {
+	_, v := IsControllerEvent(e, sdl.CONTROLLERBUTTONDOWN, btn)
 	return v
 }
 
-func isButtonRelease(e sdl.Event, btn sdl.GameControllerButton) bool {
-	_, v := isControllerEvent(e, sdl.CONTROLLERBUTTONUP, btn)
+func IsButtonRelease(e sdl.Event, btn sdl.GameControllerButton) bool {
+	_, v := IsControllerEvent(e, sdl.CONTROLLERBUTTONUP, btn)
 	return v
 }
 
-func isDropEvent(e sdl.Event, typ uint32, window uint32) (*sdl.DropEvent, bool) {
+func IsDropEvent(e sdl.Event, typ uint32, window uint32) (*sdl.DropEvent, bool) {
 	evt, ok := e.(*sdl.DropEvent)
 	if !ok {
 		return nil, false

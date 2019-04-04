@@ -22,9 +22,11 @@ type View struct {
 	visible    bool
 	fullscreen bool
 
-	window   *sdl.Window
-	renderer *Renderer
-	rect     *sdl.Rect
+	window       *sdl.Window
+	renderer     *Renderer
+	rect         *sdl.Rect
+	rendererInfo sdl.RendererInfo
+	windowInfo   sdl.SysWMInfo
 
 	fontMap FontMap
 }
@@ -50,6 +52,15 @@ func NewView(title string, w, h, scale int, windowOptions, rendererOptions uint3
 		return nil, v.Errorf("unable to create renderer: %s", err)
 	}
 
+	windowInfo, err := window.GetWMInfo()
+	if err != nil {
+		return nil, v.Errorf("unable to get window info: %s", err)
+	}
+	rendererInfo, err := renderer.GetInfo()
+	if err != nil {
+		return nil, v.Errorf("unable to get renderer info: %s", err)
+	}
+
 	if err = renderer.SetDrawBlendMode(blendMode); err != nil {
 		return nil, v.Errorf("unable to set draw blend mode: %s", err)
 	}
@@ -68,6 +79,8 @@ func NewView(title string, w, h, scale int, windowOptions, rendererOptions uint3
 		W: int32(w * scale),
 		H: int32(h * scale),
 	}
+	v.rendererInfo = rendererInfo
+	v.windowInfo = *windowInfo
 	v.fontMap = fontCache
 
 	return v, nil
@@ -90,6 +103,10 @@ func (v *View) Errorf(format string, args ...interface{}) error {
 
 func (v *View) Destroy() error {
 	return errors.NewList(v.renderer.Destroy(), v.window.Destroy())
+}
+
+func (v *View) Info() (sdl.RendererInfo, sdl.SysWMInfo) {
+	return v.rendererInfo, v.windowInfo
 }
 
 func (v *View) ID() uint32 {
@@ -152,6 +169,10 @@ func (v *View) Handle(event sdl.Event) (handled bool, err error) {
 	switch evt := event.(type) {
 
 	case *sdl.WindowEvent:
+		if evt.WindowID != v.id {
+			return false, nil
+		}
+
 		if evt.Event == sdl.WINDOWEVENT_FOCUS_GAINED {
 			v.focused = true
 			return true, nil
@@ -173,8 +194,17 @@ func (v *View) Handle(event sdl.Event) (handled bool, err error) {
 		}
 
 	case *sdl.KeyboardEvent:
-		if evt.Type == sdl.KEYDOWN && evt.Repeat == 0 && evt.Keysym.Sym == sdl.K_F11 {
+		if evt.WindowID != v.id {
+			return false, nil
+		}
+
+		if IsKeyPress(evt, sdl.K_F11) {
 			return true, v.ToggleFullscreen()
+		}
+
+		if IsKeyPress(evt, sdl.K_w, sdl.KMOD_CTRL) {
+			v.Hide()
+			return true, nil
 		}
 	}
 

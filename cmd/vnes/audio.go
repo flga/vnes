@@ -10,7 +10,7 @@ import (
 )
 
 type audioEngine struct {
-	AudioChan <-chan float32
+	audioChan <-chan float32
 
 	envelope     *envelope
 	streamParams portaudio.StreamParameters
@@ -49,8 +49,7 @@ func (a *audioEngine) init(lowLatency bool) error {
 		a.streamParams = portaudio.HighLatencyParameters(nil, host.DefaultOutputDevice)
 	}
 
-	a.streamParams.SampleRate = 48000
-	a.streamParams.FramesPerBuffer = 2048
+	a.streamParams.FramesPerBuffer = 256
 
 	a.envelope = newEnvelope(float32(a.streamParams.SampleRate))
 
@@ -61,6 +60,14 @@ func (a *audioEngine) init(lowLatency bool) error {
 	a.stream = stream
 
 	return nil
+}
+
+func (a *audioEngine) sampleRate() float64 {
+	return a.streamParams.SampleRate
+}
+
+func (a *audioEngine) setChannel(c <-chan float32) {
+	a.audioChan = c
 }
 
 func (a *audioEngine) play() error {
@@ -85,7 +92,7 @@ func (a *audioEngine) audioCallback(out []float32) {
 	for i := 0; i < len(out); i += channels {
 		var f float32
 		select {
-		case f = <-a.AudioChan:
+		case f = <-a.audioChan:
 		default:
 		}
 		f *= a.envelope.gain()

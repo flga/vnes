@@ -65,14 +65,9 @@ func (v *nametableView) Handle(event sdl.Event, engine *engine, console *nes.Con
 		return false, nil
 	}
 
-	switch evt := event.(type) {
-	case *sdl.KeyboardEvent:
-		if evt.Type == sdl.KEYUP && evt.Keysym.Sym == sdl.K_g {
-			v.gridList.Toggle()
-			return true, nil
-		}
-	case *sdl.ControllerButtonEvent:
-		fmt.Println("ctrl nametable", v.Focused())
+	if gui.IsKeyPress(event, sdl.K_g) {
+		v.gridList.Toggle()
+		return true, nil
 	}
 
 	return false, nil
@@ -100,6 +95,5 @@ func (v *nametableView) Render() error {
 		return v.Errorf("unable to draw grid: %s", err)
 	}
 
-	v.Paint()
 	return nil
 }

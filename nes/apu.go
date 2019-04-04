@@ -533,7 +533,7 @@ func (a *apu) writePort(addr uint16, v byte) {
 		} else {
 			a.seqResetDelay = 0
 		}
-		// a.sequencerCounter = 0 // see: http://wiki.nesdev.com/w/index.php/APU_Frame_Counter
+		// a.sequencerCounter = 0 // see: http://wiki.nesdev.com/w/index.php/APU_Frame_Counterq
 		// for example, this will be 3728.5 apu cycles, or 7457 CPU cycles.
 		// It might be easier to work in CPU cycles so you don't have to deal with
 		// half cycles.

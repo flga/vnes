@@ -85,30 +85,29 @@ func (v *patternView) Handle(event sdl.Event, engine *engine, console *nes.Conso
 		return false, nil
 	}
 
-	switch evt := event.(type) {
-	case *sdl.KeyboardEvent:
-		if evt.Type == sdl.KEYUP && evt.Keysym.Sym == sdl.K_g {
-			v.gridList.Toggle()
-			return true, nil
+	if gui.IsKeyPress(event, sdl.K_g) {
+		v.gridList.Toggle()
+		return true, nil
+	}
+
+	if gui.IsKeyPress(event, sdl.K_UP) {
+		if v.paletteNum == 7 {
+			v.paletteNum = 0
+		} else {
+			v.paletteNum++
 		}
-		if evt.Type == sdl.KEYUP && evt.Keysym.Sym == sdl.K_UP {
-			if v.paletteNum == 7 {
-				v.paletteNum = 0
-			} else {
-				v.paletteNum++
-			}
-			v.SetFlashMsg(fmt.Sprintf("palette %d", v.paletteNum))
-			return true, nil
+		v.SetFlashMsg(fmt.Sprintf("palette %d", v.paletteNum))
+		return true, nil
+	}
+
+	if gui.IsKeyPress(event, sdl.K_DOWN) {
+		if v.paletteNum == 0 {
+			v.paletteNum = 7
+		} else {
+			v.paletteNum--
 		}
-		if evt.Type == sdl.KEYUP && evt.Keysym.Sym == sdl.K_DOWN {
-			if v.paletteNum == 0 {
-				v.paletteNum = 7
-			} else {
-				v.paletteNum--
-			}
-			v.SetFlashMsg(fmt.Sprintf("palette %d", v.paletteNum))
-			return true, nil
-		}
+		v.SetFlashMsg(fmt.Sprintf("palette %d", v.paletteNum))
+		return true, nil
 	}
 
 	return false, nil
@@ -140,6 +139,5 @@ func (v *patternView) Render() error {
 		return v.Errorf("unable to draw grid: %s", err)
 	}
 
-	v.Paint()
 	return nil
 }

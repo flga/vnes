@@ -33,8 +33,8 @@ build-windows: clean-windows generate
 	CC="/usr/bin/x86_64-w64-mingw32-gcc" \
 	GOOS=windows \
 	GOARCH=amd64 \
-	CGO_LDFLAGS="-Lportaudio_static" \
-	go build -tags static -ldflags '-s -w -extldflags "-static"' -o $(BINARY).exe $(SRC)
+	CGO_LDFLAGS="-Lportaudio_static " \
+	go build -tags static -ldflags '-s -w -H=windowsgui -extldflags "-static"' -o $(BINARY).exe $(SRC)
 
 
 docker-build:

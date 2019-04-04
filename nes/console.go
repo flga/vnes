@@ -32,7 +32,7 @@ type Console struct {
 	openFiles []*os.File
 }
 
-func NewConsole(pc uint16, debugOut io.Writer) *Console {
+func NewConsole(sampleRate float32, pc uint16, debugOut io.Writer) *Console {
 	console := &Console{}
 	makeFile := func(channel string) (io.WriteSeeker, error) {
 		name := "TODO"
@@ -54,7 +54,7 @@ func NewConsole(pc uint16, debugOut io.Writer) *Console {
 	ctrl2 := &controller{}
 
 	ppu := newPpu()
-	apu := newApu(4096, 48000, makeFile) // TODO: parameterize sample rate
+	apu := newApu(4096, sampleRate, makeFile)
 	cpu := newCpu(debugOut, ppu, apu)
 
 	bus := &sysBus{

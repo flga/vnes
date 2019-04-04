@@ -24,26 +24,7 @@ func init() {
 }
 
 func initSDL() (func(), error) {
-	// axis events were backing up the queue and delaying other events, like
-	// button presses. This is either an issue with my controller, with sdl, or
-	// we're just processing events too slowly (might have something to do with
-	// vsync?). since zappers are not supported yet, just ignore axis events
-	// for now
-	sdl.SetEventFilterFunc(func(e sdl.Event, _ interface{}) bool {
-		if _, ok := e.(*sdl.ControllerAxisEvent); ok {
-			return false
-		}
-		if _, ok := e.(*sdl.JoyAxisEvent); ok {
-			return false
-		}
-		if _, ok := e.(*sdl.MouseMotionEvent); ok {
-			return false
-		}
-
-		return true
-	}, nil)
-
-	if err := sdl.Init(sdl.INIT_GAMECONTROLLER | sdl.INIT_VIDEO | sdl.INIT_EVENTS); err != nil {
+	if err := sdl.Init(sdl.INIT_GAMECONTROLLER | sdl.INIT_JOYSTICK | sdl.INIT_VIDEO | sdl.INIT_EVENTS); err != nil {
 		return func() {}, fmt.Errorf("initSDL: unable to init sdl: %s", err)
 	}
 
@@ -76,12 +57,6 @@ func run(romPath string, trace bool, cpuprof, memprof string) error {
 		out = os.Stderr
 	}
 
-	console := nes.NewConsole(0, out)
-
-	if romPath != "" {
-		console.LoadPath(romPath)
-	}
-
 	quitSDL, err := initSDL()
 	if err != nil {
 		return err
@@ -93,14 +68,19 @@ func run(romPath string, trace bool, cpuprof, memprof string) error {
 		return err
 	}
 
-	audioEngine := &audioEngine{
-		AudioChan: console.AudioChannel(),
-	}
-
+	audioEngine := &audioEngine{}
 	if err := audioEngine.init(true); err != nil {
 		return err
 	}
 	defer audioEngine.quit()
+
+	console := nes.NewConsole(float32(audioEngine.sampleRate()), 0, out)
+
+	audioEngine.setChannel(console.AudioChannel())
+
+	if romPath != "" {
+		console.LoadPath(romPath)
+	}
 
 	zoom := 4
 	engine, err := newEngine("vnes", zoom, audioEngine, fontCache)
